@@ -1,0 +1,9 @@
+llm:
+
+  active_provider: local
+
+  local:
+
+    model_name: Qwen/Qwen2.5-1.5B-Instruct
+    base_url: http://localhost:8000/v1
+    api_key: fuckup

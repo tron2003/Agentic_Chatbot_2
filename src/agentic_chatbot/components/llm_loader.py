@@ -1,5 +1,10 @@
+import os
 import yaml
+from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+
+load_dotenv()
 
 
 class LLMLoader:
@@ -15,16 +20,38 @@ class LLMLoader:
 
     def load_llm(self):
 
-        llm_config = self.config["llm"]["local"]
+        provider = self.config["llm"]["active_provider"]
 
-        llm = ChatOpenAI(
+        if provider == "local":
 
-            model=llm_config["model_name"],
+            llm_config = self.config["llm"]["local"]
 
-            api_key=llm_config["api_key"],
+            return ChatOpenAI(
 
-            base_url=llm_config["base_url"]
+                model=llm_config["model_name"],
 
+                api_key=llm_config["api_key"],
+
+                base_url=llm_config["base_url"]
+
+            )
+
+        elif provider == "claude":
+
+            llm_config = self.config["llm"]["claude"]
+
+            return ChatAnthropic(
+
+                model=llm_config["model_name"],
+
+                api_key=os.getenv(
+                    "ANTHROPIC_API_KEY"
+                ),
+
+                temperature=llm_config["temperature"]
+
+            )
+
+        raise ValueError(
+            f"Unknown provider: {provider}"
         )
-
-        return llm

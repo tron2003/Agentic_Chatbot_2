@@ -1,9 +1,17 @@
 llm:
 
-  active_provider: local
+  active_provider: claude
 
   local:
 
     model_name: Qwen/Qwen2.5-1.5B-Instruct
     base_url: http://localhost:8000/v1
     api_key: fuckup
+
+  claude:
+
+    model_name: "claude-sonnet-4-0"
+
+    api_key: "${ANTHROPIC_API_KEY}"
+
+    temperature: 0.7    

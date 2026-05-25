@@ -8,7 +8,7 @@ from agentic_chatbot.entity.chat_state import (
     Chatbot
 )
 
-from agentic_chatbot.components.chatbot_node import (
+from agentic_chatbot.nodes.chat_node import (
     chat_node
 )
 

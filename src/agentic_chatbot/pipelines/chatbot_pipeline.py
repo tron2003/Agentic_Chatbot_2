@@ -8,8 +8,16 @@ from agentic_chatbot.entity.chat_state import (
     Chatbot
 )
 
+from agentic_chatbot.nodes.router_node import (
+    router_node
+)
+
 from agentic_chatbot.nodes.chat_node import (
     chat_node
+)
+
+from agentic_chatbot.nodes.rag_node import (
+    rag_node
 )
 
 from agentic_chatbot.utils.summarizer import (
@@ -30,10 +38,24 @@ class ChatbotPipeline:
             Chatbot
         )
 
+
+        graph.add_node(
+            "router",
+            router_node
+        )
+
+
         graph.add_node(
             "chat",
             chat_node
         )
+
+
+        graph.add_node(
+            "rag",
+            rag_node
+        )
+
 
         graph.add_node(
             "summarize",
@@ -41,18 +63,45 @@ class ChatbotPipeline:
         )
 
 
-        graph.add_conditional_edges(
+        graph.add_edge(
 
             START,
 
-            should_summarize,
+            "router"
+        )
+
+
+        def route_decision(
+            state: Chatbot
+        ):
+
+            print(
+                f"\nFinal Route: {state.route}\n"
+            )
+
+            return (
+                state.route
+            )
+
+
+        graph.add_conditional_edges(
+
+            "router",
+
+            route_decision,
 
             {
 
-                True:
-                "summarize",
+                "chat":
+                "chat",
 
-                False:
+                "rag":
+                "rag",
+
+                "memory":
+                "chat",
+
+                "tool":
                 "chat"
 
             }
@@ -60,33 +109,45 @@ class ChatbotPipeline:
 
 
         graph.add_edge(
-            "summarize",
-            "chat"
+
+            "chat",
+
+            END
         )
 
 
         graph.add_edge(
-            "chat",
+
+            "rag",
+
             END
         )
 
 
         self.memory_context = (
+
             MemoryLoader()
             .load_memory()
         )
 
 
         self.memory = (
-            self.memory_context.__enter__()
+
+            self.memory_context
+            .__enter__()
         )
 
 
         self.memory.setup()
 
 
-        self.workflow = graph.compile(
-            checkpointer=self.memory
+        self.workflow = (
+
+            graph.compile(
+
+                checkpointer=
+                self.memory
+            )
         )
 
 
@@ -108,16 +169,19 @@ class ChatbotPipeline:
         }
 
 
-        result = self.workflow.invoke(
+        result = (
 
-            {
+            self.workflow.invoke(
 
-                "messages":[
-                    message
-                ]
-            },
+                {
 
-            config=config
+                    "messages":[
+                        message
+                    ]
+                },
+
+                config=config
+            )
         )
 
 

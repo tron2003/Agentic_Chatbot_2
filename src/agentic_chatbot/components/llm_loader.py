@@ -3,6 +3,7 @@ import yaml
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
+from langchain_ollama import ChatOllama
 
 load_dotenv()
 
@@ -29,10 +30,23 @@ class LLMLoader:
             return ChatOpenAI(
 
                 model=llm_config["model_name"],
-
                 api_key=llm_config["api_key"],
-
                 base_url=llm_config["base_url"]
+
+            )
+
+        elif provider == "local2":
+
+            llm_config = self.config["llm"]["local2"]
+
+            return ChatOllama(
+
+                model=llm_config["model_name"],
+                base_url=llm_config["base_url"],
+                temperature=llm_config.get(
+                    "temperature",
+                    0.7
+                )
 
             )
 
@@ -43,11 +57,9 @@ class LLMLoader:
             return ChatAnthropic(
 
                 model=llm_config["model_name"],
-
                 api_key=os.getenv(
                     "ANTHROPIC_API_KEY"
                 ),
-
                 temperature=llm_config["temperature"]
 
             )

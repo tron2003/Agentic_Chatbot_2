@@ -1,23 +1,13 @@
 from typing import Annotated
 
-from pydantic import (
-    BaseModel,
-    Field
-)
+from pydantic import BaseModel, Field
 
-from langgraph.graph.message import (
-    add_messages
-)
+from langgraph.graph.message import add_messages
 
 
-class Chatbot(
-    BaseModel
-):
+class Chatbot(BaseModel):
 
-    messages: Annotated[
-        list,
-        add_messages
-    ]
+    messages: Annotated[list, add_messages]
 
     summary: str | None = None
 

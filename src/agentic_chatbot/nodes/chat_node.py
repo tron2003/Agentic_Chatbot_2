@@ -1,30 +1,41 @@
+from langchain_core.messages import (
+    SystemMessage,
+)
+
 from agentic_chatbot.components.llm_loader import (
-    LLMLoader
+    LLMLoader,
 )
 
-
-llm=(
-
-    LLMLoader()
-    .load_llm()
-)
+llm = LLMLoader().load_llm()
 
 
 def chat_node(state):
 
+    messages = []
 
-    response=(
+    if state.summary:
 
-        llm.invoke(
+        messages.append(
+            SystemMessage(
+                content=f"""
+Conversation Summary:
 
-            state.messages
+{state.summary}
+
+The summary contains older conversation
+context and important user information.
+
+Use it when answering.
+"""
+            )
         )
+
+    messages.extend(
+        state.messages[-10:]
     )
 
+    response = llm.invoke(messages)
 
     return {
-
-        "messages":[
-            response
-        ]
+        "messages": [response]
     }

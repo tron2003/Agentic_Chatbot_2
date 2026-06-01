@@ -1,6 +1,6 @@
 llm:
 
-  active_provider: claude
+  active_provider: local2
 
   local:
 
@@ -15,3 +15,9 @@ llm:
     api_key: "${ANTHROPIC_API_KEY}"
 
     temperature: 0.7    
+  local2:
+
+    model_name: qwen3:4b
+    base_url: http://localhost:11434
+    api_key: fake
+    temperature: 0.7

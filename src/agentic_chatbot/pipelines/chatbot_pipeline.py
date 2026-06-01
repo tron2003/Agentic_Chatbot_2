@@ -1,32 +1,36 @@
 from langgraph.graph import (
     StateGraph,
     START,
-    END
+    END,
 )
 
 from agentic_chatbot.entity.chat_state import (
-    Chatbot
+    Chatbot,
 )
 
 from agentic_chatbot.nodes.router_node import (
-    router_node
+    router_node,
 )
 
 from agentic_chatbot.nodes.chat_node import (
-    chat_node
+    chat_node,
 )
 
 from agentic_chatbot.nodes.rag_node import (
-    rag_node
+    rag_node,
+)
+
+from agentic_chatbot.nodes.tool_node import (
+    tool_node,
 )
 
 from agentic_chatbot.utils.summarizer import (
     summarize_conversation,
-    should_summarize
+    should_summarize,
 )
 
 from agentic_chatbot.components.memory import (
-    MemoryLoader
+    MemoryLoader,
 )
 
 
@@ -34,155 +38,125 @@ class ChatbotPipeline:
 
     def __init__(self):
 
-        graph = StateGraph(
-            Chatbot
-        )
-
+        graph = StateGraph(Chatbot)
 
         graph.add_node(
             "router",
-            router_node
+            router_node,
         )
-
 
         graph.add_node(
             "chat",
-            chat_node
+            chat_node,
         )
-
 
         graph.add_node(
             "rag",
-            rag_node
+            rag_node,
         )
 
+        graph.add_node(
+            "tool_node",
+            tool_node,
+        )
 
         graph.add_node(
             "summarize",
-            summarize_conversation
+            summarize_conversation,
         )
-
 
         graph.add_edge(
-
             START,
-
-            "router"
+            "router",
         )
 
-
-        def route_decision(
-            state: Chatbot
-        ):
-
-            print(
-                f"\nFinal Route: {state.route}\n"
-            )
-
-            return (
-                state.route
-            )
-
+        def route_decision(state):
+            return state.route
 
         graph.add_conditional_edges(
-
             "router",
-
             route_decision,
-
             {
-
-                "chat":
-                "chat",
-
-                "rag":
-                "rag",
-
-                "memory":
-                "chat",
-
-                "tool":
-                "chat"
-
-            }
+                "chat": "chat",
+                "rag": "rag",
+                "tool": "tool_node",
+            },
         )
 
-
-        graph.add_edge(
-
+        graph.add_conditional_edges(
             "chat",
-
-            END
+            lambda state:
+            "summarize"
+            if should_summarize(state)
+            else END,
+            {
+                "summarize": "summarize",
+                END: END,
+            },
         )
 
+        graph.add_conditional_edges(
+            "rag",
+            lambda state:
+            "summarize"
+            if should_summarize(state)
+            else END,
+            {
+                "summarize": "summarize",
+                END: END,
+            },
+        )
+
+        graph.add_conditional_edges(
+            "tool_node",
+            lambda state:
+            "summarize"
+            if should_summarize(state)
+            else END,
+            {
+                "summarize": "summarize",
+                END: END,
+            },
+        )
 
         graph.add_edge(
-
-            "rag",
-
-            END
+            "summarize",
+            END,
         )
-
 
         self.memory_context = (
-
             MemoryLoader()
             .load_memory()
         )
 
-
         self.memory = (
-
             self.memory_context
             .__enter__()
         )
 
-
         self.memory.setup()
 
-
-        self.workflow = (
-
-            graph.compile(
-
-                checkpointer=
-                self.memory
-            )
+        self.workflow = graph.compile(
+            checkpointer=self.memory
         )
 
-
     def run(
-
         self,
         message,
-        thread_id="user_1"
-
+        thread_id="rag_singh",
     ):
 
         config = {
-
             "configurable": {
-
-                "thread_id":
-                thread_id
+                "thread_id": thread_id
             }
         }
 
-
-        result = (
-
-            self.workflow.invoke(
-
-                {
-
-                    "messages":[
-                        message
-                    ]
-                },
-
-                config=config
-            )
+        result = self.workflow.invoke(
+            {
+                "messages": [message]
+            },
+            config=config,
         )
-
 
         return result

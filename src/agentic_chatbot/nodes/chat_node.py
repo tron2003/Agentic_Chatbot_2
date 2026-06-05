@@ -15,9 +15,7 @@ def chat_node(state):
 
     if state.summary:
 
-        messages.append(
-            SystemMessage(
-                content=f"""
+        messages.append(SystemMessage(content=f"""
 Conversation Summary:
 
 {state.summary}
@@ -26,16 +24,10 @@ The summary contains older conversation
 context and important user information.
 
 Use it when answering.
-"""
-            )
-        )
+"""))
 
-    messages.extend(
-        state.messages[-10:]
-    )
+    messages.extend(state.messages[-10:])
 
     response = llm.invoke(messages)
 
-    return {
-        "messages": [response]
-    }
+    return {"messages": [response]}

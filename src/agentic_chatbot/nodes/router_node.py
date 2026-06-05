@@ -8,22 +8,22 @@ llm = LLMLoader().load_llm()
 
 structured_llm = llm.with_structured_output(Router)
 
+
 def router_node(state):
-    try :
+    try:
 
-         question = state.messages[-1].content
+        question = state.messages[-1].content
 
-         result = structured_llm.invoke([
-             SystemMessage(content=SYSTEM_PROMPT),
-             HumanMessage(content=question)
-         ])
+        result = structured_llm.invoke(
+            [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=question)]
+        )
 
-         print(f"\nQuestion: {question}")
-         print(f"Route: {result.route}")
-         print(f"Reason: {result.reason}")
+        print(f"\nQuestion: {question}")
+        print(f"Route: {result.route}")
+        print(f"Reason: {result.reason}")
 
-         return {"route": result.route}
+        return {"route": result.route}
 
     except Exception as e:
         CustomException(e)
-        raise e     
+        raise e

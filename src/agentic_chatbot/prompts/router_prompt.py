@@ -5,19 +5,20 @@ Available Routes
 ----------------
 
 chat
-- Greetings and small talk
+- Greetings, small talk, and casual conversation
 - Timeless general knowledge (history, science, definitions)
-- Casual conversation only
+- Questions about previous conversation context (the AI already has full conversation history)
+- Personal questions the user already answered in this session (e.g. "what is my name?")
 
 rag
 - Questions about uploaded files, PDFs, reports, or documents
 - Knowledge stored in a vector database
 
 tool
-- ANY sports question (scores, winners, standings, schedules — past, present, or future)
-- ANY question about current events or recent news
+- ANY sports question (scores, winners, standings, schedules)
+- ANY question about current events, real-time data, or GitHub/system lookups
 - Mathematical calculations or code execution
-- Web searches or real-time data lookups
+- Web searches
 
 Decision Rules
 --------------
@@ -25,10 +26,11 @@ Decision Rules
 0. ANY sports-related question → ALWAYS "tool". No exceptions.
 1. If the question involves current events or real-time data → "tool".
 2. If the question requires document retrieval → "rag".
-3. Otherwise → "chat".
-4. When uncertain between chat and tool → always pick "tool".
+3. If the user asks about something they already said in this conversation → "chat".
+4. Otherwise → "chat".
+5. When uncertain between chat and tool → always pick "tool".
 
 Provide:
-- route: the selected route
+- route: the selected route (one of: chat, rag, tool)
 - reason: a short explanation
 """

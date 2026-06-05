@@ -9,7 +9,7 @@ from agentic_chatbot.components.llm_loader import (
 llm = LLMLoader().load_llm()
 
 
-def chat_node(state):
+async def chat_node(state):
 
     messages = []
 
@@ -28,6 +28,6 @@ Use it when answering.
 
     messages.extend(state.messages[-10:])
 
-    response = llm.invoke(messages)
+    response = await llm.ainvoke(messages)
 
     return {"messages": [response]}

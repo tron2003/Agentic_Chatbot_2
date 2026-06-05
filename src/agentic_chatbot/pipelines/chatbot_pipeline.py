@@ -29,14 +29,11 @@ from agentic_chatbot.utils.summarizer import (
     should_summarize,
 )
 
-from agentic_chatbot.components.memory import (
-    MemoryLoader,
-)
 
 
 class ChatbotPipeline:
 
-    def __init__(self):
+    def __init__(self, checkpointer=None):
 
         graph = StateGraph(Chatbot)
 
@@ -124,23 +121,9 @@ class ChatbotPipeline:
             END,
         )
 
-        self.memory_context = (
-            MemoryLoader()
-            .load_memory()
-        )
+        self.workflow = graph.compile(checkpointer=checkpointer)
 
-        self.memory = (
-            self.memory_context
-            .__enter__()
-        )
-
-        self.memory.setup()
-
-        self.workflow = graph.compile(
-            checkpointer=self.memory
-        )
-
-    def run(
+    async def run(
         self,
         message,
         thread_id="rag_singh",
@@ -152,7 +135,8 @@ class ChatbotPipeline:
             }
         }
 
-        result = self.workflow.invoke(
+        # Use async invoke to handle async nodes
+        result = await self.workflow.ainvoke(
             {
                 "messages": [message]
             },

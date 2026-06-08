@@ -4,3 +4,6 @@ venv
 *venv
 *__pycache__
 workspace
+/frontend/.next
+/frontend/node_modules
+/frontend/.env.local

@@ -1,6 +1,6 @@
 llm:
 
-  active_provider: local2
+  active_provider: claude
 
   local:
 

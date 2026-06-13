@@ -1,0 +1,686 @@
+2026-06-13 20:51:14,076 - __main__ - ERROR - ❌ Server error: 1 validation error for ChatAnthropic
+api_key
+  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]
+    For further information visit https://errors.pydantic.dev/2.13/v/string_type
+Traceback (most recent call last):
+  File "/mnt/k/project_chatbot/run.py", line 124, in main
+    start_server(args.environment, args.workers)
+  File "/mnt/k/project_chatbot/run.py", line 82, in start_server
+    uvicorn.run(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/uvicorn/main.py", line 609, in run
+    config.load_app()
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/uvicorn/config.py", line 415, in load_app
+    return import_from_string(self.app)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/uvicorn/importer.py", line 19, in import_from_string
+    module = importlib.import_module(module_str)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1381, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1354, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1325, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 929, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 994, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/mnt/k/project_chatbot/backend_api.py", line 43, in <module>
+    from agentic_chatbot.pipelines.chatbot_pipeline import ChatbotPipeline
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/pipelines/chatbot_pipeline.py", line 11, in <module>
+    from agentic_chatbot.nodes.router_node import (
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/nodes/router_node.py", line 6, in <module>
+    llm = LLMLoader().load_llm()
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/components/llm_loader.py", line 47, in load_llm
+    return ChatAnthropic(
+           ^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/load/serializable.py", line 118, in __init__
+    super().__init__(*args, **kwargs)
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/pydantic/main.py", line 263, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for ChatAnthropic
+api_key
+  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]
+    For further information visit https://errors.pydantic.dev/2.13/v/string_type
+2026-06-13 21:01:57,156 - __main__ - ERROR - ❌ Server error: 1 validation error for TavilySearchAPIWrapper
+  Value error, Did not find tavily_api_key, please add an environment variable `TAVILY_API_KEY` which contains it, or pass `tavily_api_key` as a named parameter. [type=value_error, input_value={}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/value_error
+Traceback (most recent call last):
+  File "/mnt/k/project_chatbot/run.py", line 124, in main
+    start_server(args.environment, args.workers)
+  File "/mnt/k/project_chatbot/run.py", line 82, in start_server
+    uvicorn.run(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/uvicorn/main.py", line 609, in run
+    config.load_app()
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/uvicorn/config.py", line 415, in load_app
+    return import_from_string(self.app)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/uvicorn/importer.py", line 19, in import_from_string
+    module = importlib.import_module(module_str)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1381, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1354, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1325, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 929, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 994, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/mnt/k/project_chatbot/backend_api.py", line 43, in <module>
+    from agentic_chatbot.pipelines.chatbot_pipeline import ChatbotPipeline
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/pipelines/chatbot_pipeline.py", line 23, in <module>
+    from agentic_chatbot.nodes.agent_node import (
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/nodes/agent_node.py", line 12, in <module>
+    from agentic_chatbot.tools.web_tool import web_search
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/tools/web_tool.py", line 8, in <module>
+    search = TavilySearch(
+             ^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_tavily/tavily_search.py", line 342, in __init__
+    super().__init__(**kwargs)
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/tools/base.py", line 551, in __init__
+    super().__init__(**kwargs)
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/load/serializable.py", line 118, in __init__
+    super().__init__(*args, **kwargs)
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/pydantic/main.py", line 263, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/pydantic/main.py", line 263, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for TavilySearchAPIWrapper
+  Value error, Did not find tavily_api_key, please add an environment variable `TAVILY_API_KEY` which contains it, or pass `tavily_api_key` as a named parameter. [type=value_error, input_value={}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/value_error
+2026-06-13 21:07:03,272 - __main__ - ERROR - ❌ Server error: 1 validation error for TavilySearchAPIWrapper
+  Value error, Did not find tavily_api_key, please add an environment variable `TAVILY_API_KEY` which contains it, or pass `tavily_api_key` as a named parameter. [type=value_error, input_value={}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/value_error
+Traceback (most recent call last):
+  File "/mnt/k/project_chatbot/run.py", line 124, in main
+    start_server(args.environment, args.workers)
+  File "/mnt/k/project_chatbot/run.py", line 82, in start_server
+    uvicorn.run(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/uvicorn/main.py", line 609, in run
+    config.load_app()
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/uvicorn/config.py", line 415, in load_app
+    return import_from_string(self.app)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/uvicorn/importer.py", line 19, in import_from_string
+    module = importlib.import_module(module_str)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1381, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1354, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1325, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 929, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 994, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/mnt/k/project_chatbot/backend_api.py", line 43, in <module>
+    from agentic_chatbot.pipelines.chatbot_pipeline import ChatbotPipeline
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/pipelines/chatbot_pipeline.py", line 23, in <module>
+    from agentic_chatbot.nodes.agent_node import (
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/nodes/agent_node.py", line 12, in <module>
+    from agentic_chatbot.tools.web_tool import web_search
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/tools/web_tool.py", line 8, in <module>
+    search = TavilySearch(
+             ^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_tavily/tavily_search.py", line 342, in __init__
+    super().__init__(**kwargs)
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/tools/base.py", line 551, in __init__
+    super().__init__(**kwargs)
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/load/serializable.py", line 118, in __init__
+    super().__init__(*args, **kwargs)
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/pydantic/main.py", line 263, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/pydantic/main.py", line 263, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for TavilySearchAPIWrapper
+  Value error, Did not find tavily_api_key, please add an environment variable `TAVILY_API_KEY` which contains it, or pass `tavily_api_key` as a named parameter. [type=value_error, input_value={}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/value_error
+2026-06-13 21:13:59,969 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:13:59,969 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:13:59,971 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:13:59,972 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:13:59,973 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:13:59,973 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:13:59,975 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:13:59,975 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:13:59,975 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:13:59,975 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:00,881 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:00,884 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:00,900 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:00,947 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:00,966 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:00,983 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:00,997 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:01,034 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:01,048 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:01,070 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:02,696 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:02,700 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:02,756 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:02,887 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:02,946 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:03,009 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:03,042 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:03,148 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:03,198 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:03,260 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:06,322 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:06,329 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:06,465 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:06,769 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:06,906 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:07,055 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:07,130 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:07,377 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:07,496 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:07,638 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:13,570 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:13,582 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:13,884 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:14,530 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:14,820 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:15,147 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:15,303 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:15,829 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:16,089 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:16,393 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:28,073 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:28,093 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:28,577 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:28,581 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:28,582 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:28,583 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:28,584 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:28,722 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:28,934 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:28,935 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:28,935 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:28,936 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:28,936 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:29,497 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:29,498 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:29,563 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:29,592 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:29,645 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:29,950 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:29,952 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:29,955 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:29,970 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:30,031 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:30,042 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:30,645 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:31,292 - backend_api - INFO - Memory loader closed gracefully
+2026-06-13 21:14:31,293 - backend_api - INFO - Memory loader closed gracefully
+2026-06-13 21:14:31,325 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:31,326 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:31,536 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:31,611 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:31,772 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:31,973 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:31,983 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:31,995 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:32,039 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:32,221 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:34,973 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:34,975 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:35,476 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:35,647 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:36,020 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:36,021 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:36,043 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:36,074 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:36,175 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:36,597 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:42,267 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:42,268 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:43,353 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:43,716 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:44,111 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:44,159 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:44,229 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:44,446 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:44,516 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:14:45,346 - psycopg.pool - WARNING - error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 5432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+2026-06-13 21:16:30,701 - __main__ - INFO - 
+👋 Shutting down gracefully...
+2026-06-13 21:20:42,171 - __main__ - INFO - 🚀 Starting Agentic Chatbot API on 0.0.0.0:8001
+2026-06-13 21:21:07,793 - backend_api - INFO - [b0d137a0-59eb-443c-a751-db635cdfc231] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:21:07,814 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: cannot insert multiple commands into a prepared statement
+2026-06-13 21:21:07,821 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 6c2fb314-13c7-4f96-9c9d-53cc62e73bb1: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:21:08,567 - backend_api - ERROR - [b0d137a0-59eb-443c-a751-db635cdfc231] Error in stream: Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-haiku-4.5'}, 'request_id': 'req_011Cc1xbdhvhFUNPSbiaYXGz'}
+Traceback (most recent call last):
+  File "/mnt/k/project_chatbot/backend_api.py", line 290, in event_generator
+    result = await chatbot_instance.run(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/pipelines/chatbot_pipeline.py", line 139, in run
+    result = await self.workflow.ainvoke(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/pregel/main.py", line 4057, in ainvoke
+    async for chunk in self.astream(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/pregel/main.py", line 3407, in astream
+    async for _ in runner.atick(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py", line 396, in atick
+    await arun_with_retry(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py", line 706, in arun_with_retry
+    return await task.proc.ainvoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py", line 733, in ainvoke
+    input = await asyncio.create_task(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py", line 501, in ainvoke
+    ret = await self.afunc(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/runnables/config.py", line 667, in run_in_executor
+    return await asyncio.get_running_loop().run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/runnables/config.py", line 658, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/nodes/router_node.py", line 51, in router_node
+    raise e
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/nodes/router_node.py", line 42, in router_node
+    result = structured_llm.invoke(context_messages)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/runnables/base.py", line 3333, in invoke
+    input_ = context.run(step.invoke, input_, config, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/runnables/base.py", line 5881, in invoke
+    return self.bound.invoke(
+           ^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/language_models/chat_models.py", line 474, in invoke
+    self.generate_prompt(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/language_models/chat_models.py", line 1823, in generate_prompt
+    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/language_models/chat_models.py", line 1630, in generate
+    self._generate_with_cache(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/language_models/chat_models.py", line 1970, in _generate_with_cache
+    result = self._generate(
+             ^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_anthropic/chat_models.py", line 1701, in _generate
+    data = self._create(payload)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_anthropic/chat_models.py", line 1366, in _create
+    return self._client.messages.create(**payload)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/anthropic/_utils/_utils.py", line 294, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/anthropic/resources/messages/messages.py", line 1003, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/anthropic/_base_client.py", line 1374, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/anthropic/_base_client.py", line 1147, in request
+    raise self._make_status_error_from_response(err.response) from None
+anthropic.NotFoundError: Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-haiku-4.5'}, 'request_id': 'req_011Cc1xbdhvhFUNPSbiaYXGz'}
+During task with name 'router' and id 'd5e80f7e-e7bd-3a53-5947-3ae4fec6b578'
+2026-06-13 21:21:38,234 - backend_api - INFO - Memory loader closed gracefully
+2026-06-13 21:24:57,777 - __main__ - INFO - 🚀 Starting Agentic Chatbot API on 0.0.0.0:8001
+2026-06-13 21:26:39,318 - backend_api - INFO - [63723bf3-6d92-422a-9435-8a5414b4b976] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:26:39,346 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: column "timestamp" does not exist
+2026-06-13 21:26:39,348 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 331e76f8-d72b-49b0-8458-bbf95c3f92c3: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:26:39,934 - backend_api - ERROR - [63723bf3-6d92-422a-9435-8a5414b4b976] Error in stream: Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-3-5-haiku-20241022'}, 'request_id': 'req_011Cc1y24jF5iGZYPCZVBWXW'}
+Traceback (most recent call last):
+  File "/mnt/k/project_chatbot/backend_api.py", line 290, in event_generator
+    result = await chatbot_instance.run(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/pipelines/chatbot_pipeline.py", line 139, in run
+    result = await self.workflow.ainvoke(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/pregel/main.py", line 4057, in ainvoke
+    async for chunk in self.astream(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/pregel/main.py", line 3407, in astream
+    async for _ in runner.atick(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py", line 396, in atick
+    await arun_with_retry(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py", line 706, in arun_with_retry
+    return await task.proc.ainvoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py", line 733, in ainvoke
+    input = await asyncio.create_task(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py", line 501, in ainvoke
+    ret = await self.afunc(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/runnables/config.py", line 667, in run_in_executor
+    return await asyncio.get_running_loop().run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/runnables/config.py", line 658, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/nodes/router_node.py", line 51, in router_node
+    raise e
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/nodes/router_node.py", line 42, in router_node
+    result = structured_llm.invoke(context_messages)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/runnables/base.py", line 3333, in invoke
+    input_ = context.run(step.invoke, input_, config, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/runnables/base.py", line 5881, in invoke
+    return self.bound.invoke(
+           ^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/language_models/chat_models.py", line 474, in invoke
+    self.generate_prompt(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/language_models/chat_models.py", line 1823, in generate_prompt
+    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/language_models/chat_models.py", line 1630, in generate
+    self._generate_with_cache(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_core/language_models/chat_models.py", line 1970, in _generate_with_cache
+    result = self._generate(
+             ^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_anthropic/chat_models.py", line 1701, in _generate
+    data = self._create(payload)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langchain_anthropic/chat_models.py", line 1366, in _create
+    return self._client.messages.create(**payload)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/anthropic/_utils/_utils.py", line 294, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/anthropic/resources/messages/messages.py", line 1003, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/anthropic/_base_client.py", line 1374, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/anthropic/_base_client.py", line 1147, in request
+    raise self._make_status_error_from_response(err.response) from None
+anthropic.NotFoundError: Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-3-5-haiku-20241022'}, 'request_id': 'req_011Cc1y24jF5iGZYPCZVBWXW'}
+During task with name 'router' and id '45996d49-4248-51e3-acd3-ecb7b4ab406e'
+2026-06-13 21:27:45,026 - backend_api - INFO - Memory loader closed gracefully
+2026-06-13 21:30:36,002 - __main__ - INFO - 🚀 Starting Agentic Chatbot API on 0.0.0.0:8001
+2026-06-13 21:31:17,839 - backend_api - INFO - [77127b50-f0b7-4650-b363-fe0e4be129eb] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:31:17,861 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: column "timestamp" does not exist
+2026-06-13 21:31:17,865 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 92cc1abc-6e07-459f-906e-f10e2ffd0529: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:31:22,625 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 0b5c3df1-77b2-4b4a-ba20-aa4629baa10e: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:31:22,625 - backend_api - INFO - [77127b50-f0b7-4650-b363-fe0e4be129eb] Streaming complete - 0 steps
+2026-06-13 21:31:57,135 - backend_api - INFO - [9daf78fe-a1ee-4cad-8e6b-0b1de91376e0] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:31:57,141 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: column "timestamp" does not exist
+2026-06-13 21:31:57,142 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 4678748c-ac36-4ba9-9c43-99c9e6e6fd07: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:32:14,712 - backend_api - ERROR - [9daf78fe-a1ee-4cad-8e6b-0b1de91376e0] Error in stream: Type is not msgpack serializable: ReasoningStep
+Traceback (most recent call last):
+  File "/mnt/k/project_chatbot/backend_api.py", line 290, in event_generator
+    result = await chatbot_instance.run(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/src/agentic_chatbot/pipelines/chatbot_pipeline.py", line 139, in run
+    result = await self.workflow.ainvoke(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/pregel/main.py", line 4057, in ainvoke
+    async for chunk in self.astream(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/pregel/main.py", line 3320, in astream
+    async with AsyncPregelLoop(
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/pregel/_loop.py", line 1949, in __aexit__
+    return await exit_task
+           ^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/contextlib.py", line 742, in __aexit__
+    raise exc_details[1]
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/contextlib.py", line 725, in __aexit__
+    cb_suppress = await cb(*exc_details)
+                  ^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py", line 209, in __aexit__
+    raise exc
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/checkpoint/postgres/aio.py", line 328, in aput_writes
+    params = await asyncio.to_thread(
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/checkpoint/postgres/base.py", line 538, in _dump_writes
+    *self.serde.dumps_typed(value),
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/checkpoint/serde/jsonplus.py", line 291, in dumps_typed
+    raise exc
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/checkpoint/serde/jsonplus.py", line 287, in dumps_typed
+    return "msgpack", _msgpack_enc(obj)
+                      ^^^^^^^^^^^^^^^^^
+  File "/mnt/k/project_chatbot/venv/lib/python3.12/site-packages/langgraph/checkpoint/serde/jsonplus.py", line 880, in _msgpack_enc
+    return ormsgpack.packb(data, default=_msgpack_default, option=_option)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: Type is not msgpack serializable: ReasoningStep
+2026-06-13 21:33:41,797 - backend_api - INFO - Memory loader closed gracefully
+2026-06-13 21:39:07,874 - __main__ - INFO - 🚀 Starting Agentic Chatbot API on 0.0.0.0:8001
+2026-06-13 21:39:47,934 - backend_api - INFO - [82a658ed-3fc2-45d0-a1fa-ebf33d6c4103] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:39:47,957 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: column "timestamp" does not exist
+2026-06-13 21:39:47,959 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 8caf949a-8162-47c4-971f-ecc4f946ab4b: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:40:09,178 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 8d1730a7-0950-46d4-a011-e3fa4146b535: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:40:09,178 - backend_api - INFO - [82a658ed-3fc2-45d0-a1fa-ebf33d6c4103] Streaming complete - 7 steps
+2026-06-13 21:40:44,755 - backend_api - INFO - [ab389d90-6132-45e0-ad52-f06b76244bf3] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:40:44,764 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: column "timestamp" does not exist
+2026-06-13 21:40:44,765 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 2d7f938f-fe15-44e9-8e10-c93808d0f5bf: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:40:58,283 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 3e4ca710-9cd3-447a-b5d9-d9f20d872730: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:40:58,284 - backend_api - INFO - [ab389d90-6132-45e0-ad52-f06b76244bf3] Streaming complete - 5 steps
+2026-06-13 21:41:49,126 - backend_api - INFO - [f0e63312-3357-4c47-8a8c-d5a703562d13] Streaming chat - thread_id: 1781386902197-ljn1xls63
+2026-06-13 21:41:49,130 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: column "timestamp" does not exist
+2026-06-13 21:41:49,131 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 5a65ec96-6b3c-422a-8b3c-28990adf0607: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:41:52,884 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message e8997b93-c712-4648-b51c-e6bed72b843d: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:41:52,884 - backend_api - INFO - [f0e63312-3357-4c47-8a8c-d5a703562d13] Streaming complete - 0 steps
+2026-06-13 21:42:00,655 - backend_api - INFO - [a9ada353-0a02-43e2-a58d-8cfe67547bb9] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:42:00,658 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: column "timestamp" does not exist
+2026-06-13 21:42:00,659 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 902385cc-1312-4667-9bec-e904f51d0bf2: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:42:05,628 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message f8e11488-abf4-4c2d-868b-342449c747bb: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:42:05,628 - backend_api - INFO - [a9ada353-0a02-43e2-a58d-8cfe67547bb9] Streaming complete - 0 steps
+2026-06-13 21:42:16,893 - backend_api - INFO - [a36dd79a-8bf8-4259-8049-fa805300fec0] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:42:16,903 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: column "timestamp" does not exist
+2026-06-13 21:42:16,904 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 82f985b8-a99a-4e7c-899e-ce8d406c84aa: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:42:22,627 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 89ed7ab3-164f-4dfd-b2ab-b80b5256fea8: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:42:22,628 - backend_api - INFO - [a36dd79a-8bf8-4259-8049-fa805300fec0] Streaming complete - 0 steps
+2026-06-13 21:42:37,364 - backend_api - INFO - [34916fbe-745e-4254-bce5-59d2e82d79b2] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:42:37,368 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: column "timestamp" does not exist
+2026-06-13 21:42:37,369 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 5dea43d1-6d9c-4431-91a4-7fd053e59817: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:42:42,363 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 52cc9c5d-b14f-45df-bab6-32dfec0a0de3: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:42:42,363 - backend_api - INFO - [34916fbe-745e-4254-bce5-59d2e82d79b2] Streaming complete - 0 steps
+2026-06-13 21:43:15,713 - backend_api - INFO - Memory loader closed gracefully
+2026-06-13 21:46:01,606 - __main__ - INFO - 🚀 Starting Agentic Chatbot API on 0.0.0.0:8001
+2026-06-13 21:47:34,344 - backend_api - INFO - [c2f17520-484b-4b34-af60-2c4007f3bf9c] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:47:34,370 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: column "timestamp" does not exist
+2026-06-13 21:47:34,372 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message fa832c6a-affa-4ede-9150-89145b9db0ae: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:47:39,881 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 5e509c0e-edc9-41a2-99b5-801a75c5f15c: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:47:39,882 - backend_api - INFO - [c2f17520-484b-4b34-af60-2c4007f3bf9c] Streaming complete - 0 steps
+2026-06-13 21:51:11,644 - backend_api - INFO - [6cd892ae-37b8-473d-b938-23bf06738851] Received chat request - thread_id: test-123, message_length: 6
+2026-06-13 21:51:11,652 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: column "timestamp" does not exist
+2026-06-13 21:51:11,653 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 162932d3-867b-4049-9f2b-8882b0733432: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:51:11,654 - backend_api - WARNING - [6cd892ae-37b8-473d-b938-23bf06738851] Failed to persist user message to database
+2026-06-13 21:51:15,702 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 76283d04-86d9-4e9f-b824-8b4e7c10a1f0: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:51:15,702 - backend_api - WARNING - [6cd892ae-37b8-473d-b938-23bf06738851] Failed to persist assistant message to database
+2026-06-13 21:51:15,702 - backend_api - INFO - [6cd892ae-37b8-473d-b938-23bf06738851] Chat response generated and persisted - response_id: 76283d04-86d9-4e9f-b824-8b4e7c10a1f0, response_length: 230
+2026-06-13 21:51:57,423 - backend_api - INFO - [0630a6f3-16c9-4a2e-a447-350bed9017cb] Streaming chat - thread_id: test-456
+2026-06-13 21:51:57,431 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: column "timestamp" does not exist
+2026-06-13 21:51:57,432 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 2bd273d4-32bc-4665-b7a3-9980c8af1f98: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:52:04,970 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 851e4d0f-c5d8-4440-9267-046b17a5efbf: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:52:04,970 - backend_api - INFO - [0630a6f3-16c9-4a2e-a447-350bed9017cb] Streaming complete - 0 steps
+2026-06-13 21:52:48,106 - backend_api - INFO - [cda13456-7b22-4c5d-9911-9130d72b931b] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:52:48,115 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to create chat_history table: column "timestamp" does not exist
+2026-06-13 21:52:48,116 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message 75c70d62-70f4-4ee0-b061-26a24dda060e: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:52:51,360 - agentic_chatbot.utils.chat_persistence - ERROR - Failed to save message d29c6eef-187c-479f-a2c6-c422eaf13db5: column "message_id" of relation "chat_history" does not exist
+LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
+                                                             ^
+2026-06-13 21:52:51,360 - backend_api - INFO - [cda13456-7b22-4c5d-9911-9130d72b931b] Streaming complete - 0 steps
+2026-06-13 21:53:37,412 - backend_api - INFO - Memory loader closed gracefully
+2026-06-13 21:56:59,318 - __main__ - INFO - 🚀 Starting Agentic Chatbot API on 0.0.0.0:8001
+2026-06-13 21:57:35,482 - backend_api - INFO - [88cced18-22bf-4705-95ae-d8343dcef675] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:57:43,402 - backend_api - INFO - [88cced18-22bf-4705-95ae-d8343dcef675] Streaming complete - 0 steps
+2026-06-13 21:58:04,636 - backend_api - INFO - [d362edfe-ae91-491c-8a29-bb0d54f168fa] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:58:10,695 - backend_api - INFO - [d362edfe-ae91-491c-8a29-bb0d54f168fa] Streaming complete - 0 steps
+2026-06-13 21:59:21,424 - backend_api - INFO - [d01cd14c-7ce8-49f1-b327-8dfc9ff35fe8] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 21:59:29,631 - backend_api - INFO - [d01cd14c-7ce8-49f1-b327-8dfc9ff35fe8] Streaming complete - 0 steps
+2026-06-13 21:59:56,305 - backend_api - INFO - [32d06294-477f-4d8f-bde7-18420bf35ba6] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 22:00:20,896 - backend_api - INFO - [32d06294-477f-4d8f-bde7-18420bf35ba6] Streaming complete - 7 steps
+2026-06-13 22:00:29,618 - backend_api - INFO - [04437ce1-319c-4656-9355-04e3ec49c1d9] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 22:00:39,940 - backend_api - INFO - [04437ce1-319c-4656-9355-04e3ec49c1d9] Streaming complete - 0 steps
+2026-06-13 22:01:33,914 - backend_api - INFO - [3dbcf196-8f9e-46ce-8668-a41472ff1325] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 22:01:51,622 - backend_api - INFO - [3dbcf196-8f9e-46ce-8668-a41472ff1325] Streaming complete - 7 steps
+2026-06-13 22:01:59,937 - backend_api - INFO - [1262ad59-44d2-46b8-baa0-44394dc743e2] Streaming chat - thread_id: 1781380639279-5ido3nk41
+2026-06-13 22:02:32,372 - backend_api - INFO - [1262ad59-44d2-46b8-baa0-44394dc743e2] Streaming complete - 9 steps
+2026-06-13 22:04:35,235 - backend_api - INFO - Memory loader closed gracefully

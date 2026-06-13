@@ -1,0 +1,49 @@
+# Core Framework
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# LLM & AI
+langchain
+langchain-core
+langchain-community
+langgraph
+ollama
+
+# Database & Vector Store
+psycopg[binary]
+psycopg-pool
+pgvector
+sqlalchemy
+
+# Async & Concurrency
+asyncio
+aiofiles
+
+# Data Processing
+numpy
+pandas
+
+# Utilities
+python-dotenv
+python-multipart
+httpx
+requests
+tenacity
+
+# Logging & Monitoring
+python-json-logger
+
+# Security
+cryptography
+
+# Testing (optional)
+pytest
+pytest-asyncio
+pytest-cov
+
+# Development (optional)
+black
+flake8
+mypy

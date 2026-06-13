@@ -14,9 +14,14 @@ async def rag_node(state):
 
     context = "\n".join(doc.page_content for doc in docs)
 
+    # RAG system prompt with retrieved document context
     filled_prompt = RAG_PROMPT.format(context=context)
-    messages = build_messages(state)
-    messages = [SystemMessage(content=filled_prompt), HumanMessage(content=question)]
+
+    # Build full message list: RAG prompt + conversation history (summary + recent messages)
+    messages = [SystemMessage(content=filled_prompt)]
+    messages.extend(build_messages(state))
 
     response = await llm.ainvoke(messages)
     return {"messages": [response]}
+
+

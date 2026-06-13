@@ -6,19 +6,23 @@ from agentic_chatbot.components.llm_loader import LLMLoader
 from agentic_chatbot.tools.web_tool import web_search
 from agentic_chatbot.tools.pdf_tool import read_pdf
 from agentic_chatbot.tools.mcp_tools import get_mcp_tools
+from agentic_chatbot.prompts.web_search_prompt import WEB_SEARCH_SYSTEM_PROMPT
+from agentic_chatbot.utils.message_builder import build_messages
 
 llm = LLMLoader().load_llm()
 
 MAX_ITERATIONS = 8  # prevent infinite loops
 
-SYSTEM_PROMPT = """You are an agentic assistant with access to tools.
+# Combine general agent rules with the factual web search rules
+SYSTEM_PROMPT = f"""You are an agentic assistant with access to tools.
 Use the tools to answer the user's question step by step.
 - Search the filesystem with search_files, then read files with read_file or read_text_file.
 - For GitHub questions use search_repositories.
 - For web questions use web_search.
 Keep calling tools until you have enough information, then give a final answer.
 Do NOT produce XML or code blocks describing tool calls — use the actual tool call mechanism.
-"""
+
+{WEB_SEARCH_SYSTEM_PROMPT}"""
 
 
 async def _invoke_tool(tool, args: dict):
@@ -36,14 +40,15 @@ async def _invoke_tool(tool, args: dict):
 
 
 async def tool_node(state):
-    messages = state.messages if hasattr(state, "messages") else state["messages"]
     tools = [web_search, read_pdf, *get_mcp_tools()]
     tools_by_name = {t.name: t for t in tools}
 
     llm_with_tools = llm.bind_tools(tools)
 
-    # Build conversation so far, prefixed with system instruction
-    history = [SystemMessage(content=SYSTEM_PROMPT), *messages]
+    # Build conversation so far, prefixed with the combined system instruction
+    # Uses build_messages to ensure the conversation summary is included!
+    history = [SystemMessage(content=SYSTEM_PROMPT)]
+    history.extend(build_messages(state))
 
     for iteration in range(MAX_ITERATIONS):
         response: AIMessage = await llm_with_tools.ainvoke(history)

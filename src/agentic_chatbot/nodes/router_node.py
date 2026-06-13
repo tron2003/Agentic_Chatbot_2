@@ -7,15 +7,39 @@ llm = LLMLoader().load_llm()
 
 structured_llm = llm.with_structured_output(Router)
 
+ROUTER_SYSTEM_PROMPT = f"""{SYSTEM_PROMPT}
+
+ROUTING OPTIONS:
+1. "chat" — Simple conversational response, general questions
+2. "rag" — Query requires knowledge from ingested documents/knowledge base
+3. "agent" — Complex multi-step tasks, requires tool use, research, verification
+
+Choose "agent" for:
+- Research tasks that need multiple tools/sources
+- Complex problem-solving requiring step-by-step reasoning
+- Tasks involving web search, file reading, or code analysis
+- Verification tasks requiring multiple sources
+- Any task needing transparency in reasoning steps"""
+
 
 def router_node(state):
     try:
-
         question = state.messages[-1].content
 
-        result = structured_llm.invoke(
-            [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=question)]
-        )
+        # Build context from recent conversation
+        context_messages = [SystemMessage(content=ROUTER_SYSTEM_PROMPT)]
+
+        # Include summary if available
+        if state.summary:
+            context_messages.append(
+                SystemMessage(content=f"Conversation Summary:\n{state.summary}")
+            )
+
+        # Include last few messages for context
+        recent = state.messages[-6:]
+        context_messages.extend(recent)
+
+        result = structured_llm.invoke(context_messages)
 
         print(f"\nQuestion: {question}")
         print(f"Route: {result.route}")
@@ -25,3 +49,4 @@ def router_node(state):
 
     except Exception as e:
         raise e
+

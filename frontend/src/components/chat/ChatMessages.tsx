@@ -1,9 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { useChat } from '@/lib/ChatContext';
 import { Loader } from 'lucide-react';
+import { ReasoningSteps } from './ReasoningSteps';
 
 export function ChatMessages() {
-  const { messages, isLoading, error } = useChat();
+  const { messages, isLoading, error, reasoningSteps } = useChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -50,6 +51,12 @@ export function ChatMessages() {
           </div>
         </div>
       ))}
+
+      {reasoningSteps.length > 0 && (
+        <div className="w-full">
+          <ReasoningSteps steps={reasoningSteps} isComplete={!isLoading} />
+        </div>
+      )}
 
       {isLoading && (
         <div className="flex justify-start">

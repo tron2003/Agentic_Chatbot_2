@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sparkles, Plus, History, Trash2, Loader } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useChat } from "@/lib/ChatContext";
+import { getChatHistory, deleteChat as apiDeleteChat } from '@/lib/api';
 
 interface ChatHistoryItem {
   chat_id: string;
@@ -13,18 +14,16 @@ interface ChatHistoryItem {
 }
 
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
-  const { startNewChat, threadId } = useChat();
+  const { startNewChat, threadId, loadChat } = useChat();
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchChatHistory = async () => {
+  const fetchHistory = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('http://localhost:8001/api/history/chats');
-      if (!response.ok) throw new Error('Failed to fetch chat history');
-      const data = await response.json();
+      const data = await getChatHistory();
       setChatHistory(data);
     } catch (err) {
       console.error('Error fetching chat history:', err);
@@ -36,7 +35,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose: () => v
 
   useEffect(() => {
     if (isOpen) {
-      fetchChatHistory();
+      fetchHistory();
     }
   }, [isOpen]);
 
@@ -45,24 +44,22 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose: () => v
     onClose();
   };
 
-  const handleLoadChat = (chatId: string) => {
-    // This would load a specific chat - for now just close
+  const handleLoadChat = async (chatId: string) => {
+    await loadChat(chatId);
     onClose();
   };
 
   const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const response = await fetch(`http://localhost:8001/api/history/chats/${chatId}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) throw new Error('Failed to delete chat');
-      setChatHistory(chatHistory.filter(c => c.chat_id !== chatId));
+      await apiDeleteChat(chatId);
+      setChatHistory(prev => prev.filter(c => c.chat_id !== chatId));
     } catch (err) {
       console.error('Error deleting chat:', err);
       setError('Failed to delete chat');
     }
   };
+
   return (
     <>
       {/* Overlay */}

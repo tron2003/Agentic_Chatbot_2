@@ -5,6 +5,6 @@ from pydantic import BaseModel
 
 class Router(BaseModel):
 
-    route: Literal["chat", "rag", "tool"]
+    route: Literal["chat", "rag", "agent"]
 
     reason: str

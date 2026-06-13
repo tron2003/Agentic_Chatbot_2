@@ -1,6 +1,12 @@
 {
   "permissions": {
     "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Bash",
+      "Glob",
+      "Grep",
       "Bash(python app/main.py)",
       "Bash(pip install *)",
       "Bash(curl -s http://localhost:11434/api/tags)",
@@ -9,7 +15,13 @@
       "Bash(findstr /i \"Bot :\")",
       "Bash(python -c \"import sys; [print\\(l.rstrip\\(\\)\\) for l in sys.stdin if 'Bot' in l or 'Route' in l or 'Question' in l]\")",
       "Bash(pip show *)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(grep -E '\\\\.\\(py|json|md\\)$|^d')",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(.\\\\venv\\\\Scripts\\\\activate)",
+      "Bash(pkill -f \"npm run dev\")",
+      "Skill(update-config)"
     ]
   }
 }

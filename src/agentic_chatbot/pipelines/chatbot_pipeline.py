@@ -20,11 +20,11 @@ from agentic_chatbot.nodes.rag_node import (
     rag_node,
 )
 
-from agentic_chatbot.nodes.tool_node import (
-    tool_node,
+from agentic_chatbot.nodes.agent_node import (
+    agent_node,
 )
 
-from agentic_chatbot.utils.summarizer import (
+from agentic_chatbot.nodes.summarizer_node import (
     summarize_conversation,
     should_summarize,
 )
@@ -53,8 +53,8 @@ class ChatbotPipeline:
         )
 
         graph.add_node(
-            "tool_node",
-            tool_node,
+            "agent",
+            agent_node,
         )
 
         graph.add_node(
@@ -76,7 +76,7 @@ class ChatbotPipeline:
             {
                 "chat": "chat",
                 "rag": "rag",
-                "tool": "tool_node",
+                "agent": "agent",
             },
         )
 
@@ -105,7 +105,7 @@ class ChatbotPipeline:
         )
 
         graph.add_conditional_edges(
-            "tool_node",
+            "agent",
             lambda state:
             "summarize"
             if should_summarize(state)

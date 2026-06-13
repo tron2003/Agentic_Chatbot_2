@@ -1,23 +1,25 @@
 """
 Chat History Router
-Handles chat history endpoints for managing conversations
+Stores and retrieves chat history from PostgreSQL database.
 """
+
+import os
+import sys
+from pathlib import Path
+from datetime import datetime
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
-from datetime import datetime
-import json
-from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 router = APIRouter(prefix="/api/history", tags=["history"])
 
-# In-memory storage for chat history (can be replaced with database)
-chat_storage: Dict[str, Dict[str, Any]] = {}
+DB_URI = os.getenv("DB_URI")
 
-# Optional: Use file-based storage
-STORAGE_DIR = Path("chat_data")
-STORAGE_DIR.mkdir(exist_ok=True)
+# ── Pydantic Models ──────────────────────────────────────────────────────────
 
 class ChatMessage(BaseModel):
     role: str
@@ -45,155 +47,228 @@ class UpdateChatTitleRequest(BaseModel):
     chat_id: str
     title: str
 
+
+# ── Database helpers ─────────────────────────────────────────────────────────
+
+import json
+
+_pool = None
+
+async def _get_pool():
+    """Lazy-init a connection pool for chat history."""
+    global _pool
+    if _pool is not None:
+        return _pool
+
+    if not DB_URI:
+        raise HTTPException(
+            status_code=500,
+            detail="DB_URI not set — cannot use PostgreSQL for chat history",
+        )
+
+    try:
+        import psycopg_pool
+        _pool = psycopg_pool.AsyncConnectionPool(
+            conninfo=DB_URI,
+            max_size=5,
+            kwargs={"autocommit": True, "prepare_threshold": 0},
+            open=False,
+        )
+        await _pool.open()
+        return _pool
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to connect to database: {str(e)}",
+        )
+
+
+async def _ensure_table():
+    """Create the chat_history table if it doesn't exist."""
+    pool = await _get_pool()
+    async with pool.connection() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS chat_history (
+                chat_id    TEXT PRIMARY KEY,
+                title      TEXT NOT NULL DEFAULT 'New Chat',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                messages   JSONB NOT NULL DEFAULT '[]'::jsonb
+            );
+        """)
+
+
+_table_ready = False
+
+async def _ensure_ready():
+    global _table_ready
+    if not _table_ready:
+        await _ensure_table()
+        _table_ready = True
+
+
+# ── Endpoints ────────────────────────────────────────────────────────────────
+
 @router.get("/chats", response_model=List[ChatHistoryItem])
 async def get_chat_history():
-    """Get list of all chats"""
-    history = []
-    
-    # Load from storage files
-    for chat_file in STORAGE_DIR.glob("chat_*.json"):
-        try:
-            with open(chat_file, 'r') as f:
-                data = json.load(f)
-                history.append(ChatHistoryItem(
-                    chat_id=data['chat_id'],
-                    title=data['title'],
-                    created_at=data['created_at'],
-                    message_count=len(data.get('messages', []))
-                ))
-        except Exception as e:
-            print(f"Error loading chat file {chat_file}: {e}")
-    
-    # Sort by creation date (newest first)
-    history.sort(key=lambda x: x.created_at, reverse=True)
-    return history
+    """Get list of all chats."""
+    await _ensure_ready()
+    pool = await _get_pool()
+
+    async with pool.connection() as conn:
+        rows = await conn.execute(
+            """
+            SELECT chat_id, title, created_at, jsonb_array_length(messages) as msg_count
+            FROM chat_history
+            ORDER BY updated_at DESC
+            """
+        )
+        results = await rows.fetchall()
+
+    return [
+        ChatHistoryItem(
+            chat_id=row[0],
+            title=row[1],
+            created_at=row[2].isoformat() if row[2] else "",
+            message_count=row[3] or 0,
+        )
+        for row in results
+    ]
+
 
 @router.get("/chats/{chat_id}", response_model=ChatSession)
 async def get_chat(chat_id: str):
-    """Get a specific chat session"""
-    chat_file = STORAGE_DIR / f"chat_{chat_id}.json"
-    
-    if not chat_file.exists():
+    """Get a specific chat session."""
+    await _ensure_ready()
+    pool = await _get_pool()
+
+    async with pool.connection() as conn:
+        row = await conn.execute(
+            "SELECT chat_id, title, created_at, messages FROM chat_history WHERE chat_id = %s",
+            (chat_id,),
+        )
+        result = await row.fetchone()
+
+    if not result:
         raise HTTPException(status_code=404, detail="Chat not found")
-    
-    try:
-        with open(chat_file, 'r') as f:
-            data = json.load(f)
-            return ChatSession(**data)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error loading chat: {str(e)}")
+
+    messages_data = result[3] if result[3] else []
+
+    return ChatSession(
+        chat_id=result[0],
+        title=result[1],
+        created_at=result[2].isoformat() if result[2] else "",
+        messages=[ChatMessage(**m) for m in messages_data],
+    )
+
 
 @router.post("/chats")
 async def save_chat(request: SaveChatRequest):
-    """Save or update a chat session"""
-    chat_file = STORAGE_DIR / f"chat_{request.chat_id}.json"
-    
-    try:
-        chat_data = {
-            "chat_id": request.chat_id,
-            "title": request.title,
-            "created_at": datetime.now().isoformat() if not chat_file.exists() else None,
-            "updated_at": datetime.now().isoformat(),
-            "messages": [msg.dict() for msg in request.messages]
-        }
-        
-        # Preserve created_at if updating
-        if chat_file.exists():
-            with open(chat_file, 'r') as f:
-                existing = json.load(f)
-                chat_data["created_at"] = existing.get("created_at", datetime.now().isoformat())
-        else:
-            chat_data["created_at"] = datetime.now().isoformat()
-        
-        with open(chat_file, 'w') as f:
-            json.dump(chat_data, f, indent=2)
-        
-        return {
-            "success": True,
-            "chat_id": request.chat_id,
-            "message": "Chat saved successfully"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error saving chat: {str(e)}")
+    """Save or update a chat session."""
+    await _ensure_ready()
+    pool = await _get_pool()
+
+    messages_json = json.dumps([msg.dict() for msg in request.messages])
+
+    async with pool.connection() as conn:
+        await conn.execute(
+            """
+            INSERT INTO chat_history (chat_id, title, created_at, updated_at, messages)
+            VALUES (%s, %s, NOW(), NOW(), %s::jsonb)
+            ON CONFLICT (chat_id) DO UPDATE SET
+                title = EXCLUDED.title,
+                updated_at = NOW(),
+                messages = EXCLUDED.messages
+            """,
+            (request.chat_id, request.title, messages_json),
+        )
+
+    return {
+        "success": True,
+        "chat_id": request.chat_id,
+        "message": "Chat saved successfully",
+    }
+
 
 @router.put("/chats/{chat_id}/title")
 async def update_chat_title(chat_id: str, request: UpdateChatTitleRequest):
-    """Update chat title"""
-    chat_file = STORAGE_DIR / f"chat_{chat_id}.json"
-    
-    if not chat_file.exists():
-        raise HTTPException(status_code=404, detail="Chat not found")
-    
-    try:
-        with open(chat_file, 'r') as f:
-            data = json.load(f)
-        
-        data['title'] = request.title
-        data['updated_at'] = datetime.now().isoformat()
-        
-        with open(chat_file, 'w') as f:
-            json.dump(data, f, indent=2)
-        
-        return {
-            "success": True,
-            "chat_id": chat_id,
-            "title": request.title
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error updating title: {str(e)}")
+    """Update chat title."""
+    await _ensure_ready()
+    pool = await _get_pool()
+
+    async with pool.connection() as conn:
+        result = await conn.execute(
+            "UPDATE chat_history SET title = %s, updated_at = NOW() WHERE chat_id = %s",
+            (request.title, chat_id),
+        )
+
+    return {
+        "success": True,
+        "chat_id": chat_id,
+        "title": request.title,
+    }
+
 
 @router.delete("/chats/{chat_id}")
 async def delete_chat(chat_id: str):
-    """Delete a chat session"""
-    chat_file = STORAGE_DIR / f"chat_{chat_id}.json"
-    
-    if not chat_file.exists():
+    """Delete a chat session."""
+    await _ensure_ready()
+    pool = await _get_pool()
+
+    async with pool.connection() as conn:
+        result = await conn.execute(
+            "DELETE FROM chat_history WHERE chat_id = %s RETURNING chat_id",
+            (chat_id,),
+        )
+        deleted = await result.fetchone()
+
+    if not deleted:
         raise HTTPException(status_code=404, detail="Chat not found")
-    
-    try:
-        chat_file.unlink()  # Delete file
-        return {
-            "success": True,
-            "chat_id": chat_id,
-            "message": "Chat deleted successfully"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error deleting chat: {str(e)}")
+
+    return {
+        "success": True,
+        "chat_id": chat_id,
+        "message": "Chat deleted successfully",
+    }
+
 
 @router.delete("/chats")
 async def clear_all_chats():
-    """Delete all chat sessions"""
-    try:
-        count = 0
-        for chat_file in STORAGE_DIR.glob("chat_*.json"):
-            chat_file.unlink()
-            count += 1
-        
-        return {
-            "success": True,
-            "deleted_count": count,
-            "message": f"Deleted {count} chat(s)"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error clearing chats: {str(e)}")
+    """Delete all chat sessions."""
+    await _ensure_ready()
+    pool = await _get_pool()
+
+    async with pool.connection() as conn:
+        result = await conn.execute("DELETE FROM chat_history")
+
+    return {
+        "success": True,
+        "message": "All chats cleared",
+    }
+
 
 @router.get("/stats")
 async def get_chat_stats():
-    """Get chat statistics"""
-    chat_files = list(STORAGE_DIR.glob("chat_*.json"))
-    total_messages = 0
-    total_chats = len(chat_files)
-    
-    for chat_file in chat_files:
-        try:
-            with open(chat_file, 'r') as f:
-                data = json.load(f)
-                total_messages += len(data.get('messages', []))
-        except:
-            pass
-    
+    """Get chat statistics."""
+    await _ensure_ready()
+    pool = await _get_pool()
+
+    async with pool.connection() as conn:
+        row = await conn.execute(
+            """
+            SELECT
+                COUNT(*) as total_chats,
+                COALESCE(SUM(jsonb_array_length(messages)), 0) as total_messages
+            FROM chat_history
+            """
+        )
+        result = await row.fetchone()
+
+    total_chats = result[0] or 0
+    total_messages = result[1] or 0
+
     return {
         "total_chats": total_chats,
         "total_messages": total_messages,
-        "average_messages_per_chat": total_messages / total_chats if total_chats > 0 else 0
+        "average_messages_per_chat": total_messages / total_chats if total_chats > 0 else 0,
     }

@@ -49,6 +49,7 @@ from routes.chat_history import router as chat_history_router
 # Import document ingestion routes
 from routes.ingest import router as ingest_router
 
+
 # Define lifespan before creating the app
 @asynccontextmanager
 async def lifespan_context(app: FastAPI):
@@ -68,7 +69,9 @@ async def lifespan_context(app: FastAPI):
         chatbot_instance = ChatbotPipeline(checkpointer=checkpointer)
 
         print("\n✅ Chatbot API server started successfully on port 8001")
-        print("📌 Available endpoints: /chat, /api/history/chats, /api/ingest/upload, /health\n")
+        print(
+            "📌 Available endpoints: /chat, /api/history/chats, /api/ingest/upload, /health\n"
+        )
 
     except Exception as e:
         logger.error(f"❌ Error during startup: {e}", exc_info=True)
@@ -90,13 +93,13 @@ app = FastAPI(
     title="Agentic Chatbot API",
     version="1.0.0",
     description="Production-ready agentic chatbot with RAG, tool use, and conversation memory",
-    lifespan=lifespan_context
+    lifespan=lifespan_context,
 )
 
 # Configure CORS with environment-based origins
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
-    "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002"
+    "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002",
 ).split(",")
 
 app.add_middleware(
@@ -115,21 +118,26 @@ app.include_router(ingest_router)
 chatbot_instance = None
 memory_loader = None
 
+
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=10000, description="User message")
+    message: str = Field(
+        ..., min_length=1, max_length=10000, description="User message"
+    )
     thread_id: str = Field(..., min_length=1, description="Conversation thread ID")
 
-    @field_validator('message', mode='before')
+    @field_validator("message", mode="before")
     @classmethod
     def message_must_not_be_empty(cls, v):
         if isinstance(v, str) and not v.strip():
-            raise ValueError('Message cannot be empty or whitespace only')
+            raise ValueError("Message cannot be empty or whitespace only")
         return v if isinstance(v, str) else str(v)
+
 
 class ChatResponse(BaseModel):
     response: str = Field(..., description="Assistant response")
     message_id: str = Field(..., description="Unique message ID")
     timestamp: str = Field(..., description="ISO 8601 timestamp")
+
 
 @app.get("/")
 async def root():
@@ -142,9 +150,10 @@ async def root():
             "chat": "/chat",
             "health": "/health",
             "chat_history": "/api/history/chats",
-            "docs": "/docs"
-        }
+            "docs": "/docs",
+        },
     }
+
 
 @app.get("/health")
 async def health_check():
@@ -153,8 +162,9 @@ async def health_check():
         "status": "healthy",
         "chatbot_ready": chatbot_instance is not None,
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "1.0.0"
+        "version": "1.0.0",
     }
+
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, request_obj: Request):
@@ -178,11 +188,13 @@ async def chat(request: ChatRequest, request_obj: Request):
         logger.error(f"[{correlation_id}] Chatbot not initialized")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Chatbot not initialized. Please try again later."
+            detail="Chatbot not initialized. Please try again later.",
         )
 
     try:
-        logger.info(f"[{correlation_id}] Received chat request - thread_id: {request.thread_id}, message_length: {len(request.message)}")
+        logger.info(
+            f"[{correlation_id}] Received chat request - thread_id: {request.thread_id}, message_length: {len(request.message)}"
+        )
 
         # Generate IDs and timestamp
         user_message_id = str(uuid.uuid4())
@@ -196,22 +208,27 @@ async def chat(request: ChatRequest, request_obj: Request):
             message_id=user_message_id,
             role="user",
             content=request.message,
-            timestamp=timestamp
+            timestamp=timestamp,
         )
         if not user_saved:
-            logger.warning(f"[{correlation_id}] Failed to persist user message to database")
+            logger.warning(
+                f"[{correlation_id}] Failed to persist user message to database"
+            )
 
         # Create the human message for the pipeline
         human_message = HumanMessage(content=request.message)
 
         # Run the chatbot pipeline
         result = await chatbot_instance.run(
-            message=human_message,
-            thread_id=request.thread_id
+            message=human_message, thread_id=request.thread_id
         )
 
         # Extract the response content
-        response_content = result['messages'][-1].content if result['messages'] else "No response generated"
+        response_content = (
+            result["messages"][-1].content
+            if result["messages"]
+            else "No response generated"
+        )
         assistant_message_id = str(uuid.uuid4())
         response_timestamp = datetime.utcnow().isoformat()
 
@@ -221,31 +238,37 @@ async def chat(request: ChatRequest, request_obj: Request):
             message_id=assistant_message_id,
             role="assistant",
             content=response_content,
-            timestamp=response_timestamp
+            timestamp=response_timestamp,
         )
         if not assistant_saved:
-            logger.warning(f"[{correlation_id}] Failed to persist assistant message to database")
+            logger.warning(
+                f"[{correlation_id}] Failed to persist assistant message to database"
+            )
 
-        logger.info(f"[{correlation_id}] Chat response generated and persisted - response_id: {assistant_message_id}, response_length: {len(response_content)}")
+        logger.info(
+            f"[{correlation_id}] Chat response generated and persisted - response_id: {assistant_message_id}, response_length: {len(response_content)}"
+        )
 
         return ChatResponse(
             response=response_content,
             message_id=assistant_message_id,
-            timestamp=response_timestamp
+            timestamp=response_timestamp,
         )
 
     except ValueError as e:
         logger.warning(f"[{correlation_id}] Validation error: {e}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid request: {str(e)}"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid request: {str(e)}"
         )
     except Exception as e:
-        logger.error(f"[{correlation_id}] Error processing chat request: {e}", exc_info=True)
+        logger.error(
+            f"[{correlation_id}] Error processing chat request: {e}", exc_info=True
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while processing your request. Please try again."
+            detail="An error occurred while processing your request. Please try again.",
         )
+
 
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest, request_obj: Request):
@@ -261,12 +284,14 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
     if not chatbot_instance:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Chatbot not initialized. Please try again later."
+            detail="Chatbot not initialized. Please try again later.",
         )
 
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
-            logger.info(f"[{correlation_id}] Streaming chat - thread_id: {request.thread_id}")
+            logger.info(
+                f"[{correlation_id}] Streaming chat - thread_id: {request.thread_id}"
+            )
 
             # Generate IDs and timestamp
             user_message_id = str(uuid.uuid4())
@@ -280,18 +305,25 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
 
             # Run the chatbot pipeline
             result = await chatbot_instance.run(
-                message=human_message,
-                thread_id=request.thread_id
+                message=human_message, thread_id=request.thread_id
             )
 
             # Extract response and reasoning steps
-            response_content = result['messages'][-1].content if result['messages'] else "No response generated"
+            response_content = (
+                result["messages"][-1].content
+                if result["messages"]
+                else "No response generated"
+            )
 
             # Get reasoning steps from message metadata
-            final_message = result['messages'][-1] if result['messages'] else None
+            final_message = result["messages"][-1] if result["messages"] else None
             reasoning_steps = []
-            if final_message and hasattr(final_message, 'metadata') and final_message.metadata:
-                reasoning_steps = final_message.metadata.get('reasoning_steps', [])
+            if (
+                final_message
+                and hasattr(final_message, "metadata")
+                and final_message.metadata
+            ):
+                reasoning_steps = final_message.metadata.get("reasoning_steps", [])
 
             # Stream reasoning steps (already dicts from ReasoningStep)
             for step in reasoning_steps:
@@ -308,12 +340,14 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
                 "data": {
                     "response": response_content,
                     "message_id": assistant_message_id,
-                    "timestamp": response_timestamp
-                }
+                    "timestamp": response_timestamp,
+                },
             }
             yield f"data: {json.dumps(response_event)}\n\n"
 
-            logger.info(f"[{correlation_id}] Streaming complete - {len(reasoning_steps)} steps")
+            logger.info(
+                f"[{correlation_id}] Streaming complete - {len(reasoning_steps)} steps"
+            )
 
             # Send complete event
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
@@ -322,14 +356,14 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
             logger.warning(f"[{correlation_id}] Validation error: {e}")
             error_event = {
                 "type": "error",
-                "data": {"detail": f"Invalid request: {str(e)}"}
+                "data": {"detail": f"Invalid request: {str(e)}"},
             }
             yield f"data: {json.dumps(error_event)}\n\n"
         except Exception as e:
             logger.error(f"[{correlation_id}] Error in stream: {e}", exc_info=True)
             error_event = {
                 "type": "error",
-                "data": {"detail": "An error occurred while processing your request."}
+                "data": {"detail": "An error occurred while processing your request."},
             }
             yield f"data: {json.dumps(error_event)}\n\n"
 
@@ -339,7 +373,7 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
-        }
+        },
     )
 
 
@@ -350,8 +384,9 @@ async def general_exception_handler(request: Request, exc: Exception):
     logger.error(f"[{correlation_id}] Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "An unexpected error occurred. Please try again later."}
+        content={"detail": "An unexpected error occurred. Please try again later."},
     )
+
 
 if __name__ == "__main__":
     import uvicorn
@@ -371,5 +406,5 @@ if __name__ == "__main__":
         workers=workers,
         reload=reload,
         log_level="info",
-        access_log=True
+        access_log=True,
     )

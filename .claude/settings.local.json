@@ -21,7 +21,9 @@
       "Bash(npm run *)",
       "Bash(.\\\\venv\\\\Scripts\\\\activate)",
       "Bash(pkill -f \"npm run dev\")",
-      "Skill(update-config)"
+      "Skill(update-config)",
+      "PowerShell(Get-ChildItem -Path \"K:\\\\project_chatbot\" -Depth 1 | Where-Object {$_.PSIsContainer -eq $false} | Select-Object Name)",
+      "PowerShell(Copy-Item *)"
     ]
   }
 }

@@ -1,12 +1,19 @@
 """
 Chat persistence utilities for ensuring all messages are stored in PostgreSQL.
+Provides async database operations with comprehensive error handling and logging.
 """
 
+import sys
 import os
 import json
 import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
+from uuid import uuid4
+
+from agentic_chatbot.exception.exception import DatabaseException
+from agentic_chatbot.logging.logging_utils import get_correlation_id, ExecutionTimer
+
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +25,7 @@ class ChatPersistence:
 
     def __init__(self):
         self._pool = None
+        self.correlation_id = get_correlation_id()
 
     async def _get_pool(self):
         """Get or create database connection pool."""
@@ -25,10 +33,18 @@ class ChatPersistence:
             return self._pool
 
         if not DB_URI:
-            logger.warning("DB_URI not set — chat persistence disabled")
+            logger.warning(
+                "DB_URI not set — chat persistence disabled",
+                extra={"correlation_id": self.correlation_id}
+            )
             return None
 
         try:
+            logger.debug(
+                "Initializing database connection pool",
+                extra={"correlation_id": self.correlation_id}
+            )
+
             import psycopg_pool
 
             self._pool = psycopg_pool.AsyncConnectionPool(
@@ -38,41 +54,79 @@ class ChatPersistence:
                 open=False,
             )
             await self._pool.open()
+
+            logger.info(
+                "Database connection pool initialized",
+                extra={"correlation_id": self.correlation_id}
+            )
+
             return self._pool
         except Exception as e:
-            logger.error(f"Failed to initialize chat persistence pool: {e}")
-            return None
+            logger.error(
+                f"Failed to initialize chat persistence pool: {str(e)}",
+                extra={"correlation_id": self.correlation_id},
+                exc_info=True
+            )
+            raise DatabaseException(
+                f"Failed to initialize database pool: {str(e)}",
+                sys,
+                correlation_id=self.correlation_id
+            )
 
     async def ensure_table(self):
         """Create chat_history table if it doesn't exist."""
-        pool = await self._get_pool()
-        if not pool:
-            return
+        with ExecutionTimer("ensure_table", self.correlation_id, logger):
+            pool = await self._get_pool()
+            if not pool:
+                logger.warning(
+                    "No database pool available, skipping table creation",
+                    extra={"correlation_id": self.correlation_id}
+                )
+                return
 
-        try:
-            async with pool.connection() as conn:
-                # Execute each statement separately
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS chat_history (
-                        chat_id TEXT NOT NULL,
-                        message_id TEXT PRIMARY KEY,
-                        role TEXT NOT NULL,
-                        content TEXT NOT NULL,
-                        timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            try:
+                async with pool.connection() as conn:
+                    logger.debug(
+                        "Creating chat_history table",
+                        extra={"correlation_id": self.correlation_id}
                     )
-                """)
 
-                await conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_chat_history_chat_id ON chat_history(chat_id)"
-                )
+                    # Execute each statement separately
+                    await conn.execute("""
+                        CREATE TABLE IF NOT EXISTS chat_history (
+                            chat_id TEXT NOT NULL,
+                            message_id TEXT PRIMARY KEY,
+                            role TEXT NOT NULL,
+                            content TEXT NOT NULL,
+                            timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                        )
+                    """)
 
-                await conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_chat_history_timestamp ON chat_history(timestamp)"
+                    await conn.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_chat_history_chat_id ON chat_history(chat_id)"
+                    )
+
+                    await conn.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_chat_history_timestamp ON chat_history(timestamp)"
+                    )
+
+                    logger.info(
+                        "Chat history table ensured",
+                        extra={"correlation_id": self.correlation_id}
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Failed to create chat_history table: {str(e)}",
+                    extra={"correlation_id": self.correlation_id},
+                    exc_info=True
                 )
-        except Exception as e:
-            logger.error(f"Failed to create chat_history table: {e}")
+                raise DatabaseException(
+                    f"Failed to ensure chat history table: {str(e)}",
+                    sys,
+                    correlation_id=self.correlation_id
+                )
 
     async def save_message(
         self,
@@ -97,27 +151,45 @@ class ChatPersistence:
         """
         pool = await self._get_pool()
         if not pool:
-            logger.warning(f"Cannot save message {message_id} — no database connection")
+            logger.warning(
+                f"Cannot save message {message_id} — no database connection",
+                extra={"correlation_id": self.correlation_id}
+            )
             return False
 
         try:
-            if timestamp is None:
-                timestamp = datetime.utcnow().isoformat()
+            with ExecutionTimer("save_message", self.correlation_id, logger):
+                if timestamp is None:
+                    timestamp = datetime.utcnow().isoformat()
 
-            async with pool.connection() as conn:
-                await conn.execute(
-                    """
-                    INSERT INTO chat_history (chat_id, message_id, role, content, timestamp)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (message_id) DO UPDATE SET
-                        content = EXCLUDED.content,
-                        updated_at = NOW()
-                    """,
-                    (chat_id, message_id, role, content, timestamp),
+                logger.debug(
+                    f"Saving message {message_id} for chat {chat_id}",
+                    extra={"correlation_id": self.correlation_id}
                 )
-            return True
+
+                async with pool.connection() as conn:
+                    await conn.execute(
+                        """
+                        INSERT INTO chat_history (chat_id, message_id, role, content, timestamp)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (message_id) DO UPDATE SET
+                            content = EXCLUDED.content,
+                            updated_at = NOW()
+                        """,
+                        (chat_id, message_id, role, content, timestamp),
+                    )
+
+                logger.debug(
+                    f"Message {message_id} saved successfully",
+                    extra={"correlation_id": self.correlation_id}
+                )
+                return True
         except Exception as e:
-            logger.error(f"Failed to save message {message_id}: {e}")
+            logger.error(
+                f"Failed to save message {message_id}: {str(e)}",
+                extra={"correlation_id": self.correlation_id},
+                exc_info=True
+            )
             return False
 
     async def get_chat_messages(self, chat_id: str, limit: int = 100) -> List[Dict[str, Any]]:
@@ -133,58 +205,106 @@ class ChatPersistence:
         """
         pool = await self._get_pool()
         if not pool:
-            logger.warning(f"Cannot retrieve messages for {chat_id} — no database connection")
+            logger.warning(
+                f"Cannot retrieve messages for {chat_id} — no database connection",
+                extra={"correlation_id": self.correlation_id}
+            )
             return []
 
         try:
-            async with pool.connection() as conn:
-                rows = await conn.execute(
-                    """
-                    SELECT message_id, role, content, timestamp
-                    FROM chat_history
-                    WHERE chat_id = %s
-                    ORDER BY timestamp ASC
-                    LIMIT %s
-                    """,
-                    (chat_id, limit),
+            with ExecutionTimer("get_chat_messages", self.correlation_id, logger):
+                logger.debug(
+                    f"Retrieving messages for chat {chat_id}",
+                    extra={"correlation_id": self.correlation_id}
                 )
-                results = await rows.fetchall()
 
-            messages = [
-                {
-                    "message_id": row[0],
-                    "role": row[1],
-                    "content": row[2],
-                    "timestamp": row[3].isoformat() if row[3] else None,
-                }
-                for row in results
-            ]
-            return messages
+                async with pool.connection() as conn:
+                    rows = await conn.execute(
+                        """
+                        SELECT message_id, role, content, timestamp
+                        FROM chat_history
+                        WHERE chat_id = %s
+                        ORDER BY timestamp ASC
+                        LIMIT %s
+                        """,
+                        (chat_id, limit),
+                    )
+                    results = await rows.fetchall()
+
+                messages = [
+                    {
+                        "message_id": row[0],
+                        "role": row[1],
+                        "content": row[2],
+                        "timestamp": row[3].isoformat() if row[3] else None,
+                    }
+                    for row in results
+                ]
+
+                logger.info(
+                    f"Retrieved {len(messages)} messages for chat {chat_id}",
+                    extra={"correlation_id": self.correlation_id}
+                )
+                return messages
         except Exception as e:
-            logger.error(f"Failed to retrieve messages for {chat_id}: {e}")
+            logger.error(
+                f"Failed to retrieve messages for {chat_id}: {str(e)}",
+                extra={"correlation_id": self.correlation_id},
+                exc_info=True
+            )
             return []
 
     async def delete_chat(self, chat_id: str) -> bool:
         """Delete all messages for a chat session."""
         pool = await self._get_pool()
         if not pool:
+            logger.warning(
+                f"Cannot delete chat {chat_id} — no database connection",
+                extra={"correlation_id": self.correlation_id}
+            )
             return False
 
         try:
-            async with pool.connection() as conn:
-                await conn.execute(
-                    "DELETE FROM chat_history WHERE chat_id = %s",
-                    (chat_id,),
+            with ExecutionTimer("delete_chat", self.correlation_id, logger):
+                logger.debug(
+                    f"Deleting chat {chat_id}",
+                    extra={"correlation_id": self.correlation_id}
                 )
-            return True
+
+                async with pool.connection() as conn:
+                    await conn.execute(
+                        "DELETE FROM chat_history WHERE chat_id = %s",
+                        (chat_id,),
+                    )
+
+                logger.info(
+                    f"Chat {chat_id} deleted successfully",
+                    extra={"correlation_id": self.correlation_id}
+                )
+                return True
         except Exception as e:
-            logger.error(f"Failed to delete chat {chat_id}: {e}")
+            logger.error(
+                f"Failed to delete chat {chat_id}: {str(e)}",
+                extra={"correlation_id": self.correlation_id},
+                exc_info=True
+            )
             return False
 
     async def close(self):
         """Close the database connection pool."""
         if self._pool:
-            await self._pool.close()
+            try:
+                await self._pool.close()
+                logger.info(
+                    "Database connection pool closed",
+                    extra={"correlation_id": self.correlation_id}
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error closing database pool: {str(e)}",
+                    extra={"correlation_id": self.correlation_id},
+                    exc_info=True
+                )
 
 
 # Global instance

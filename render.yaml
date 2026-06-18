@@ -1,0 +1,92 @@
+services:
+  # Backend API Service
+  - type: web
+    name: agentic-chatbot-api
+    runtime: python
+    plan: standard
+    pythonVersion: 3.12
+
+    # Build and start commands
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py --environment production --workers 4
+
+    # Environment variables
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12
+      - key: SERVER_HOST
+        value: 0.0.0.0
+      - key: SERVER_PORT
+        value: 8001
+      - key: ENVIRONMENT
+        value: production
+      - key: PROVIDER
+        value: ${PROVIDER:-anthropic}  # Change to 'ollama' for self-hosted
+      - key: MODEL
+        value: ${MODEL:-claude-3-5-sonnet-20241022}
+      - key: LOG_LEVEL
+        value: INFO
+
+    # Database connection (auto-provided by Render)
+    envVarsFile: .env.render
+
+    # Health check
+    healthCheckPath: /health
+    healthCheckPollInterval: 30
+
+  # Frontend Web Service (Static Site)
+  - type: web
+    name: agentic-chatbot-frontend
+    runtime: node
+    plan: standard
+    nodeVersion: 20
+
+    # Build command for static site
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    routes:
+      - path: /api
+        destination: http://agentic-chatbot-api:8001
+
+    # Environment variables for frontend build
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: VITE_API_URL
+        value: ${RENDER_EXTERNAL_URL}  # Render's domain
+      - key: VITE_WS_URL
+        value: ${RENDER_EXTERNAL_WS_URL}
+
+    # Route static assets to frontend
+    routes:
+      - path: /
+        destination: static
+
+# PostgreSQL Database with PGVector
+databases:
+  - name: agentic-chatbot-db
+    databaseName: chatbot_prod
+    user: chatbot_user
+    plan: standard  # Change to 'free' for testing (note: limited resources)
+
+    # Render automatically provides DATABASE_URL env var to all services
+    # The backend will use: postgresql://chatbot_user:password@host:5432/chatbot_prod
+
+# Environment file for Render
+# Create .env.render with:
+# DB_URI=$DATABASE_URL
+# JWT_SECRET=<your-secret-key>
+# ANTHROPIC_API_KEY=<your-api-key>  # If using Anthropic
+# ALLOWED_ORIGINS=https://yourdomain.com,https://api.yourdomain.com
+
+# Deployment instructions:
+#
+# 1. Push this file to your GitHub repository
+# 2. Go to render.com and create a new project
+# 3. Select "Web Service" and connect your GitHub repo
+# 4. Render will auto-detect render.yaml
+# 5. Configure environment variables in Render dashboard
+# 6. Deploy!
+#
+# Note: The free PostgreSQL plan on Render is limited.
+# For production, upgrade to Standard or higher.

@@ -65,21 +65,13 @@ Ignore:
 Return only the summary.
 """
 
-    response = llm.invoke(
-        recent_messages
-        + [
-            HumanMessage(content=prompt)
-        ]
-    )
+    response = llm.invoke(recent_messages + [HumanMessage(content=prompt)])
 
     messages_to_delete = state.messages[:-KEEP_LAST_MESSAGES]
 
     return {
         "summary": response.content,
-        "messages": [
-            RemoveMessage(id=m.id)
-            for m in messages_to_delete
-        ],
+        "messages": [RemoveMessage(id=m.id) for m in messages_to_delete],
     }
 
 

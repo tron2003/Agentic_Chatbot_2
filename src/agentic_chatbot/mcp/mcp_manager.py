@@ -26,7 +26,9 @@ class MCPManager:
         if isinstance(obj, str) and obj.startswith("${") and obj.endswith("}"):
             env_value = os.getenv(obj[2:-1])
             if env_value is None:
-                print(f"Warning: Environment variable {obj[2:-1]} not set, using empty string")
+                print(
+                    f"Warning: Environment variable {obj[2:-1]} not set, using empty string"
+                )
                 return ""
             return env_value
 

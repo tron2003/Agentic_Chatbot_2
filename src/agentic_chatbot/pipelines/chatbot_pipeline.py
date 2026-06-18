@@ -30,7 +30,6 @@ from agentic_chatbot.nodes.summarizer_node import (
 )
 
 
-
 class ChatbotPipeline:
 
     def __init__(self, checkpointer=None):
@@ -82,10 +81,7 @@ class ChatbotPipeline:
 
         graph.add_conditional_edges(
             "chat",
-            lambda state:
-            "summarize"
-            if should_summarize(state)
-            else END,
+            lambda state: "summarize" if should_summarize(state) else END,
             {
                 "summarize": "summarize",
                 END: END,
@@ -94,10 +90,7 @@ class ChatbotPipeline:
 
         graph.add_conditional_edges(
             "rag",
-            lambda state:
-            "summarize"
-            if should_summarize(state)
-            else END,
+            lambda state: "summarize" if should_summarize(state) else END,
             {
                 "summarize": "summarize",
                 END: END,
@@ -106,10 +99,7 @@ class ChatbotPipeline:
 
         graph.add_conditional_edges(
             "agent",
-            lambda state:
-            "summarize"
-            if should_summarize(state)
-            else END,
+            lambda state: "summarize" if should_summarize(state) else END,
             {
                 "summarize": "summarize",
                 END: END,
@@ -129,17 +119,11 @@ class ChatbotPipeline:
         thread_id="rag_singh",
     ):
 
-        config = {
-            "configurable": {
-                "thread_id": thread_id
-            }
-        }
+        config = {"configurable": {"thread_id": thread_id}}
 
         # Use async invoke to handle async nodes
         result = await self.workflow.ainvoke(
-            {
-                "messages": [message]
-            },
+            {"messages": [message]},
             config=config,
         )
 

@@ -40,6 +40,7 @@ def check_requirements():
         import langchain
         import langgraph
         import psycopg
+
         logger.info("✅ All required dependencies are installed")
         return True
     except ImportError as e:
@@ -66,7 +67,9 @@ def start_server(environment: str = "production", workers: int = 1):
     # Check database connection
     db_uri = os.getenv("DB_URI")
     if not db_uri:
-        logger.error("❌ Error: DB_URI not set. Please configure your database connection.")
+        logger.error(
+            "❌ Error: DB_URI not set. Please configure your database connection."
+        )
         sys.exit(1)
 
     logger.info(f"🔗 Database: {db_uri[:50]}...")
@@ -90,9 +93,7 @@ def start_server(environment: str = "production", workers: int = 1):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Start the Agentic Chatbot API server"
-    )
+    parser = argparse.ArgumentParser(description="Start the Agentic Chatbot API server")
     parser.add_argument(
         "--environment",
         choices=["development", "staging", "production"],

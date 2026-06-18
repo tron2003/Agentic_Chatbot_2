@@ -22,10 +22,10 @@ def configure_logging(environment: str = "production"):
     # Determine log level based on environment
     if environment == "development":
         log_level = logging.DEBUG
-        console_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        console_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     else:
         log_level = logging.INFO
-        console_format = '%(levelname)s - %(message)s'
+        console_format = "%(levelname)s - %(message)s"
 
     # Configure root logger
     root_logger = logging.getLogger()
@@ -36,10 +36,10 @@ def configure_logging(environment: str = "production"):
         root_logger.removeHandler(handler)
 
     # File handler - verbose (for debugging)
-    file_handler = logging.FileHandler(log_dir / 'chatbot.log')
+    file_handler = logging.FileHandler(log_dir / "chatbot.log")
     file_handler.setLevel(logging.DEBUG)
     file_formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     file_handler.setFormatter(file_formatter)
 

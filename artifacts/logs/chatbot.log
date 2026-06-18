@@ -684,3 +684,45 @@ LINE 2: ...               INSERT INTO chat_history (chat_id, message_id...
 2026-06-13 22:01:59,937 - backend_api - INFO - [1262ad59-44d2-46b8-baa0-44394dc743e2] Streaming chat - thread_id: 1781380639279-5ido3nk41
 2026-06-13 22:02:32,372 - backend_api - INFO - [1262ad59-44d2-46b8-baa0-44394dc743e2] Streaming complete - 9 steps
 2026-06-13 22:04:35,235 - backend_api - INFO - Memory loader closed gracefully
+2026-06-14 04:04:45,986 - test_logger - DEBUG - Function call: {"correlation_id": "19078517-2f49-470c-944c-e8e92d29166e", "function": "test_function", "args_count": 2, "kwargs": {}, "timestamp": "2026-06-13T22:34:45.986205"}
+2026-06-14 04:04:45,986 - test_logger - DEBUG - Function result: {"correlation_id": "19078517-2f49-470c-944c-e8e92d29166e", "function": "test_function", "execution_time_ms": 0.0, "result_type": "int", "timestamp": "2026-06-13T22:34:45.986205"}
+2026-06-14 04:04:45,986 - test_logger - DEBUG - Function call: {"correlation_id": "d753b9cb-682a-47be-82f1-a2eb9828e98a", "function": "test_async_function", "args_count": 2, "kwargs": {}, "timestamp": "2026-06-13T22:34:45.986205"}
+2026-06-14 04:04:46,099 - test_logger - DEBUG - Function result: {"correlation_id": "d753b9cb-682a-47be-82f1-a2eb9828e98a", "function": "test_async_function", "execution_time_ms": 112.8, "result_type": "int", "timestamp": "2026-06-13T22:34:46.099005"}
+2026-06-14 04:04:46,099 - test_logger - DEBUG - Operation started: {"correlation_id": "timer-test-123", "operation": "test_operation", "status": "started", "timestamp": "2026-06-13T22:34:46.099005"}
+2026-06-14 04:04:46,201 - test_logger - DEBUG - Operation completed: {"correlation_id": "timer-test-123", "operation": "test_operation", "status": "completed", "execution_time_ms": 102.13, "timestamp": "2026-06-13T22:34:46.201139"}
+2026-06-14 04:04:46,201 - test_logger - DEBUG - Operation started: {"correlation_id": "timer-fail-123", "operation": "failing_operation", "status": "started", "timestamp": "2026-06-13T22:34:46.201139"}
+2026-06-14 04:04:46,201 - test_logger - ERROR - Operation failed: {"correlation_id": "timer-fail-123", "operation": "failing_operation", "status": "failed", "exception_type": "ValueError", "exception_message": "Test error in timer", "execution_time_ms": 0.0, "timestamp": "2026-06-13T22:34:46.201139"}
+2026-06-14 04:04:46,201 - test_logger - INFO - Test log message for file output
+2026-06-14 04:04:46,201 - test_logger - INFO - Structured test message
+2026-06-14 04:04:46,201 - test_logger - ERROR - Test exception occurred
+Traceback (most recent call last):
+  File "K:\project_chatbot\test_logging_exceptions.py", line 334, in test_exception_logging
+    raise ValueError("Test exception")
+ValueError: Test exception
+2026-06-14 04:04:50,919 - pydot - DEBUG - pydot initializing
+2026-06-14 04:04:50,919 - pydot - DEBUG - pydot 4.0.1
+2026-06-14 04:04:50,919 - pydot.core - DEBUG - pydot core module initializing
+2026-06-14 04:04:53,104 - agentic_chatbot.components.llm_loader - DEBUG - Loading LLM configuration
+2026-06-14 04:04:53,104 - agentic_chatbot.components.llm_loader - DEBUG - LLM configuration loaded successfully
+2026-06-14 04:04:53,104 - agentic_chatbot.components.llm_loader - DEBUG - Loading LLM provider: claude
+2026-06-14 04:04:53,104 - agentic_chatbot.components.llm_loader - INFO - Initializing Claude LLM
+2026-06-14 04:04:53,119 - agentic_chatbot.components.llm_loader - DEBUG - Loading LLM configuration
+2026-06-14 04:04:53,119 - agentic_chatbot.components.llm_loader - DEBUG - LLM configuration loaded successfully
+2026-06-14 04:04:53,119 - agentic_chatbot.components.llm_loader - DEBUG - Loading LLM provider: claude
+2026-06-14 04:04:53,119 - agentic_chatbot.components.llm_loader - INFO - Initializing Claude LLM
+2026-06-14 04:04:53,452 - agentic_chatbot.components.vector_store_loader - DEBUG - Loading embeddings for vector store
+2026-06-14 04:04:53,929 - agentic_chatbot.components.vector_store_loader - DEBUG - Embeddings loaded successfully
+2026-06-14 04:04:53,929 - agentic_chatbot.components.vector_store_loader - DEBUG - Initializing PGVector connection
+2026-06-14 04:04:54,000 - agentic_chatbot.components.vector_store_loader - INFO - Vector store loaded successfully
+2026-06-14 04:04:54,003 - agentic_chatbot.components.llm_loader - DEBUG - Loading LLM configuration
+2026-06-14 04:04:54,003 - agentic_chatbot.components.llm_loader - DEBUG - LLM configuration loaded successfully
+2026-06-14 04:04:54,003 - agentic_chatbot.components.llm_loader - DEBUG - Loading LLM provider: claude
+2026-06-14 04:04:54,003 - agentic_chatbot.components.llm_loader - INFO - Initializing Claude LLM
+2026-06-14 04:04:54,680 - agentic_chatbot.components.llm_loader - DEBUG - Loading LLM configuration
+2026-06-14 04:04:54,680 - agentic_chatbot.components.llm_loader - DEBUG - LLM configuration loaded successfully
+2026-06-14 04:04:54,680 - agentic_chatbot.components.llm_loader - DEBUG - Loading LLM provider: claude
+2026-06-14 04:04:54,680 - agentic_chatbot.components.llm_loader - INFO - Initializing Claude LLM
+2026-06-14 04:04:54,690 - agentic_chatbot.components.llm_loader - DEBUG - Loading LLM configuration
+2026-06-14 04:04:54,690 - agentic_chatbot.components.llm_loader - DEBUG - LLM configuration loaded successfully
+2026-06-14 04:04:54,690 - agentic_chatbot.components.llm_loader - DEBUG - Loading LLM provider: claude
+2026-06-14 04:04:54,690 - agentic_chatbot.components.llm_loader - INFO - Initializing Claude LLM

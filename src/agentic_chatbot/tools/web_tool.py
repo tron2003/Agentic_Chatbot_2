@@ -11,10 +11,7 @@ search = None
 
 if TAVILY_API_KEY:
     try:
-        search = TavilySearch(
-            api_key=TAVILY_API_KEY,
-            max_results=5
-        )
+        search = TavilySearch(api_key=TAVILY_API_KEY, max_results=5)
     except Exception as e:
         print(f"⚠️  Failed to initialize TavilySearch: {e}")
 else:
@@ -41,8 +38,7 @@ def web_search(query: str) -> str:
         print(f"Answer from tool: {raw}")
 
         return "\n\n".join(
-            f"Source: {r['url']}\nTitle: {r['title']}\n{r['content']}"
-            for r in results
+            f"Source: {r['url']}\nTitle: {r['title']}\n{r['content']}" for r in results
         )
     except Exception as e:
         return f"Error searching web: {str(e)}"

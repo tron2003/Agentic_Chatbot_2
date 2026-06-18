@@ -1,0 +1,193 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database with PGVector
+  # For local development. On cloud (Render/Railway), use managed database instead.
+  postgres:
+    image: pgvector/pgvector:pg17  # Updated to pg17
+    container_name: chatbot-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chatbot_prod}
+      POSTGRES_USER: ${POSTGRES_USER:-chatbot_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_password_123}
+      # Prevent data loss on restart
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${DB_PORT:-5432}:5432"  # Use custom port if needed
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatbot_user} -d ${POSTGRES_DB:-chatbot_prod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - chatbot-network
+    # Restart policy: always restart unless stopped
+    restart: unless-stopped
+
+  # Ollama LLM Service (Optional - comment out to use cloud LLM)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: chatbot-ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - chatbot-network
+    # Uncomment to limit memory usage (adjust as needed)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 8G
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatbot-api
+    environment:
+      # Server Configuration
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8001
+      ENVIRONMENT: production
+
+      # Database Configuration
+      DB_URI: postgresql://${POSTGRES_USER:-chatbot_user}:${POSTGRES_PASSWORD:-secure_password_123}@postgres:5432/${POSTGRES_DB:-chatbot_prod}
+      DB_POOL_SIZE: 20
+      DB_MAX_OVERFLOW: 40
+
+      # LLM Configuration
+      PROVIDER: ${PROVIDER:-ollama}
+      MODEL: ${MODEL:-mistral}
+      OLLAMA_BASE_URL: http://ollama:11434
+
+      # For cloud LLM services (uncomment and set accordingly)
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+
+      # Vector Store Configuration
+      TOP_K: 5
+      FETCH_K: 20
+      SIMILARITY_THRESHOLD: 0.7
+
+      # Conversation Settings
+      SUMMARY_THRESHOLD: 20
+      CONTEXT_WINDOW: 4096
+      MAX_ITERATIONS: 8
+
+      # Security
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:5173
+
+      # Logging
+      LOG_LEVEL: INFO
+      LOG_FILE: artifacts/logs/chatbot.log
+
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./workspace:/app/workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # Uncomment if using Ollama
+      # ollama:
+      #   condition: service_healthy
+    networks:
+      - chatbot-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # React Frontend (Vite)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: chatbot-ui
+    environment:
+      VITE_API_URL: http://localhost:8001
+      VITE_WS_URL: ws://localhost:8001/ws
+    ports:
+      - "3000:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    depends_on:
+      - backend
+    networks:
+      - chatbot-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5173"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Optional: Nginx Reverse Proxy (for production-like setup)
+  # Uncomment this section to test with reverse proxy
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: chatbot-nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./ssl:/etc/nginx/ssl:ro
+  #   depends_on:
+  #     - backend
+  #     - frontend
+  #   networks:
+  #     - chatbot-network
+  #   restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  ollama_data:
+    driver: local
+
+networks:
+  chatbot-network:
+    driver: bridge
+
+# Usage:
+#
+# Development (with hot reload):
+#   docker-compose up -d
+#
+# Production build:
+#   docker-compose -f docker-compose.yml up -d
+#
+# View logs:
+#   docker-compose logs -f backend
+#   docker-compose logs -f frontend
+#   docker-compose logs -f postgres
+#
+# Stop all services:
+#   docker-compose down
+#
+# Destroy everything (including volumes):
+#   docker-compose down -v
+#
+# Access services:
+#   Frontend:  http://localhost:3000 (dev) or http://localhost:5173 (vite)
+#   API:       http://localhost:8001
+#   Database:  postgresql://localhost:5432/chatbot_prod
+#   Ollama:    http://localhost:11434

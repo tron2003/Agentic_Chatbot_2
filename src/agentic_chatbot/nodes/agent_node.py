@@ -1,291 +1,143 @@
 """
-Agent Node — Multi-step agentic reasoning with Claude tool use and extended thinking.
-Shows reasoning steps for transparency (like Claude Code).
+Agent route: a ReAct loop with tools and live reasoning events.
+
+Each model turn streams its text to the client as it is generated. When the
+turn ends with tool calls, the node emits ``draft_reset`` so the client moves
+that text into the reasoning timeline (it was the agent thinking out loud, not
+the answer), then runs the tools in parallel and emits a timeline stop per
+tool call. The final turn, without tool calls, is the answer.
 """
 
-import sys
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
-from typing import Optional
-from datetime import datetime
-from langchain_core.messages import SystemMessage, ToolMessage, AIMessage, HumanMessage
-from agentic_chatbot.components.llm_loader import LLMLoader
-from agentic_chatbot.tools.web_tool import web_search
-from agentic_chatbot.tools.pdf_tool import read_pdf
-from agentic_chatbot.tools.mcp_tools import get_mcp_tools
-from agentic_chatbot.utils.message_builder import build_messages
-from agentic_chatbot.exception.exception import LLMException
-from agentic_chatbot.logging.logging_utils import (
-    ExecutionTimer,
-    get_correlation_id,
-    log_async,
-)
+from typing import Any
+
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool
+
+from agentic_chatbot.components.llm_loader import get_llm
+from agentic_chatbot.core.settings import config_section
+from agentic_chatbot.entity.chat_state import Chatbot
+from agentic_chatbot.logging.logging_utils import ExecutionTimer
+from agentic_chatbot.nodes.events import emit, step
+from agentic_chatbot.prompts.agent_prompt import FINALIZE_INSTRUCTION, build_agent_prompt
+from agentic_chatbot.services.knowledge_base import get_knowledge_base
+from agentic_chatbot.tools.mcp_tools import get_agent_tools
+from agentic_chatbot.utils.message_builder import conversational, message_text, strip_think
 
 logger = logging.getLogger(__name__)
 
-llm = LLMLoader().load_llm()
-
-MAX_ITERATIONS = 10
-REASONING_BUDGET = 10000  # tokens for extended thinking (if using Claude)
-
-AGENT_SYSTEM_PROMPT = """You are an advanced agentic AI assistant with access to multiple tools.
-Your role is to break down complex problems into steps, reason through them, and use tools strategically.
-
-CORE PRINCIPLES:
-1. Think step-by-step before taking action
-2. Break complex tasks into smaller subtasks
-3. Use tools to gather information, not as a first resort
-4. Verify information from multiple sources when possible
-5. Explain your reasoning process clearly
-6. Be transparent about limitations and uncertainties
-
-AVAILABLE TOOLS:
-- web_search: Search the internet for current information
-- read_pdf: Extract and analyze PDF documents
-- search_files: Find files in the filesystem
-- read_file: Read file contents
-- search_repositories: Search GitHub repositories
-- read_text_file: Read text files
-
-REASONING PROCESS:
-1. Analyze the user's request carefully
-2. Plan your approach (explain what you'll do)
-3. Execute tools if needed
-4. Synthesize information
-5. Provide a comprehensive answer with sources
-
-When done gathering information, provide your final answer with clear reasoning."""
+TOOL_TITLES = {
+    "web_search": "Searching the web",
+    "calculator": "Calculating",
+    "current_datetime": "Checking the date and time",
+    "search_knowledge_base": "Searching your documents",
+    "read_pdf": "Reading a PDF",
+}
 
 
-class ReasoningStep(dict):
-    """Represents a single step in the agent's reasoning process (JSON serializable)."""
-
-    def __init__(self, step_type: str, content: str, timestamp: Optional[str] = None):
-        super().__init__()
-        self["type"] = (
-            step_type  # "thinking", "tool_call", "tool_result", "final_answer"
-        )
-        self["content"] = content
-        self["timestamp"] = timestamp or datetime.utcnow().isoformat()
-
-    def to_dict(self):
-        return dict(self)
+def _describe_args(args: dict[str, Any]) -> str:
+    if not args:
+        return ""
+    if len(args) == 1:
+        value = next(iter(args.values()))
+        return value if isinstance(value, str) else json.dumps(value)[:200]
+    return json.dumps(args, ensure_ascii=False)[:240]
 
 
-async def _invoke_tool(tool, args: dict, correlation_id: str):
-    """Call a tool, handling both sync and async invoke."""
-    tool_name = getattr(tool, "name", "unknown")
+async def _run_tool(tools: dict[str, BaseTool], call: dict[str, Any], timeout: float, max_chars: int) -> ToolMessage:
+    name, call_id = call["name"], call["id"]
+    tool = tools.get(name)
+    if tool is None:
+        return ToolMessage(content=f"Error: tool '{name}' does not exist.", tool_call_id=call_id, name=name, status="error")
     try:
-        logger.debug(
-            f"Invoking tool: {tool_name}", extra={"correlation_id": correlation_id}
+        result = await asyncio.wait_for(
+            tool.ainvoke({"type": "tool_call", "id": call_id, "name": name, "args": call.get("args") or {}}),
+            timeout=timeout,
         )
+    except TimeoutError:
+        return ToolMessage(content=f"Error: {name} timed out after {timeout:.0f}s.", tool_call_id=call_id, name=name, status="error")
+    except Exception as exc:  # tool raised
+        logger.warning("Tool %s failed: %s", name, exc)
+        return ToolMessage(content=f"Error running {name}: {exc}", tool_call_id=call_id, name=name, status="error")
 
-        if asyncio.iscoroutinefunction(tool.invoke):
-            result = await tool.invoke(args)
-        elif hasattr(tool, "arun"):
-            result = await tool.arun(args)
-        else:
-            result = await asyncio.get_event_loop().run_in_executor(
-                None, tool.invoke, args
-            )
-
-        logger.debug(
-            f"Tool {tool_name} executed successfully",
-            extra={"correlation_id": correlation_id},
-        )
-        return str(result)
-    except Exception as e:
-        logger.error(
-            f"Tool execution failed: {tool_name}",
-            extra={
-                "correlation_id": correlation_id,
-                "tool_name": tool_name,
-                "error": str(e),
-            },
-            exc_info=True,
-        )
-        return f"Error executing {tool_name}: {str(e)}"
+    if not isinstance(result, ToolMessage):
+        result = ToolMessage(content=str(result), tool_call_id=call_id, name=name)
+    text = message_text(result.content) if not isinstance(result.content, str) else result.content
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n\n[output truncated]"
+    return ToolMessage(content=text, tool_call_id=call_id, name=name, artifact=result.artifact,
+                       status=getattr(result, "status", "success"))
 
 
-@log_async()
-async def agent_node(state):
-    """
-    Multi-step agent with reasoning transparency.
-    Shows all thinking and tool calls to the frontend.
-    """
-    correlation_id = get_correlation_id()
+def _sources_from(message: ToolMessage) -> list[dict]:
+    artifact = message.artifact
+    if isinstance(artifact, list):
+        return [s for s in artifact if isinstance(s, dict) and (s.get("url") or s.get("title"))]
+    return []
 
-    with ExecutionTimer("agent_node", correlation_id, logger):
-        try:
-            logger.debug(
-                "Starting agent node processing",
-                extra={"correlation_id": correlation_id},
-            )
 
-            tools = [web_search, read_pdf, *get_mcp_tools()]
-            tools_by_name = {t.name: t for t in tools}
+async def agent_node(state: Chatbot, config: RunnableConfig) -> dict:
+    with ExecutionTimer("agent_node", logger_instance=logger):
+        cfg = config_section("agent")
+        max_iterations = int(cfg.get("max_iterations", 8))
+        timeout = float(cfg.get("tool_timeout_seconds", 45))
+        max_chars = int(cfg.get("max_tool_output_chars", 12000))
 
-            logger.debug(
-                f"Available tools: {list(tools_by_name.keys())}",
-                extra={"correlation_id": correlation_id},
-            )
+        kb_available = await get_knowledge_base().has_documents()
+        tools = get_agent_tools(include_kb=kb_available)
+        by_name = {t.name: t for t in tools}
+        llm = get_llm("main").bind_tools(tools)
 
-            llm_with_tools = llm.bind_tools(tools)
+        history: list[BaseMessage] = [SystemMessage(content=build_agent_prompt(list(by_name), state.summary))]
+        history.extend(conversational(state.messages, int(config_section("memory").get("context_messages", 12))))
 
-            # Initialize reasoning steps list
-            reasoning_steps = []
+        sources: list[dict] = []
+        seen_urls: set[str] = set()
+        final: AIMessage | None = None
 
-            # Build conversation history
-            history = [SystemMessage(content=AGENT_SYSTEM_PROMPT)]
-            if state.summary:
-                logger.debug(
-                    "Including conversation summary in agent context",
-                    extra={"correlation_id": correlation_id},
-                )
-                history.append(
-                    SystemMessage(content=f"Conversation Summary:\n{state.summary}")
-                )
-            history.extend(build_messages(state))
+        for iteration in range(max_iterations + 1):
+            last_round = iteration == max_iterations
+            if last_round:
+                history.append(HumanMessage(content=FINALIZE_INSTRUCTION))
+            response: AIMessage = await llm.ainvoke(history, config=config)
+            history.append(response)
 
-            user_query = state.messages[-1].content if state.messages else "No query"
+            if not response.tool_calls or last_round:
+                final = response
+                break
 
-            logger.debug(
-                f"Agent query: {user_query[:100]}...",
-                extra={"correlation_id": correlation_id},
-            )
+            thought = strip_think(message_text(response.content))
+            emit({"type": "draft_reset"})
+            if thought:
+                step("thinking", "Planning", thought)
 
-            # Step 1: Planning Phase (initial thinking)
-            planning_step = ReasoningStep(
-                "thinking",
-                f"Analyzing request: {user_query[:100]}...\nWill determine what tools and approaches are needed.",
-            )
-            reasoning_steps.append(planning_step)
+            logger.info("Agent iteration %d: %d tool call(s)", iteration + 1, len(response.tool_calls))
+            for call in response.tool_calls:
+                step("tool", TOOL_TITLES.get(call["name"], f"Using {call['name']}"), _describe_args(call.get("args") or {}),
+                     step_id=call["id"], status="running", tool=call["name"])
 
-            print(f"\n[AGENT] Starting agentic reasoning for: {user_query[:60]}...")
+            results = await asyncio.gather(*[_run_tool(by_name, c, timeout, max_chars) for c in response.tool_calls])
 
-            for iteration in range(MAX_ITERATIONS):
-                logger.debug(
-                    f"Agent iteration {iteration + 1}/{MAX_ITERATIONS}",
-                    extra={"correlation_id": correlation_id},
-                )
+            for call, result in zip(response.tool_calls, results, strict=True):
+                found = _sources_from(result)
+                fresh = [s for s in found if not s.get("url") or s["url"] not in seen_urls]
+                seen_urls.update(s["url"] for s in fresh if s.get("url"))
+                sources.extend(fresh)
+                preview = result.content if isinstance(result.content, str) else message_text(result.content)
+                summary = f"{len(found)} result{'s' if len(found) != 1 else ''}" if found else preview[:280]
+                step("tool", TOOL_TITLES.get(call["name"], f"Used {call['name']}"), _describe_args(call.get("args") or {}),
+                     step_id=call["id"], status="error" if result.status == "error" else "done",
+                     tool=call["name"], result=summary)
+            if sources:
+                emit({"type": "sources", "items": sources})
+            history.extend(results)
 
-                response: AIMessage = await llm_with_tools.ainvoke(history)
-                history.append(response)
-
-                # Extract thinking if available (Claude's internal reasoning)
-                if hasattr(response, "content") and response.content:
-                    thought = response.content
-                    if thought and len(thought) > 20:
-                        thinking_step = ReasoningStep("thinking", thought[:500])
-                        reasoning_steps.append(thinking_step)
-
-                # No tool calls → agent has final answer
-                if not response.tool_calls:
-                    logger.info(
-                        f"Agent completed after {iteration + 1} iteration(s)",
-                        extra={"correlation_id": correlation_id},
-                    )
-                    print(
-                        f"\n[AGENT] Reasoning complete after {iteration + 1} iteration(s)"
-                    )
-                    break
-
-                logger.info(
-                    f"Agent iteration {iteration + 1}: {len(response.tool_calls)} tool call(s)",
-                    extra={"correlation_id": correlation_id},
-                )
-                print(
-                    f"[AGENT] Iteration {iteration + 1} — {len(response.tool_calls)} tool call(s)"
-                )
-
-                # Execute tool calls
-                tool_messages = []
-                tasks = [
-                    (tc["id"], tc["name"], tc.get("args", {}))
-                    for tc in response.tool_calls
-                ]
-
-                # Add tool call steps to reasoning
-                for call_id, tool_name, args in tasks:
-                    tool_step = ReasoningStep(
-                        "tool_call",
-                        f"Calling {tool_name} with arguments: {json.dumps(args)[:200]}...",
-                    )
-                    reasoning_steps.append(tool_step)
-                    print(f"  → Calling {tool_name}")
-
-                results = await asyncio.gather(
-                    *[
-                        (
-                            _invoke_tool(tools_by_name[name], args, correlation_id)
-                            if name in tools_by_name
-                            else asyncio.coroutine(lambda: f"Tool '{name}' not found")()
-                        )
-                        for _, name, args in tasks
-                    ],
-                    return_exceptions=True,
-                )
-
-                for (call_id, name, _), result in zip(tasks, results):
-                    content = (
-                        str(result)
-                        if not isinstance(result, Exception)
-                        else f"Error: {result}"
-                    )
-                    preview = content[:150].replace("\n", " ")
-
-                    # Add tool result to reasoning
-                    result_step = ReasoningStep(
-                        "tool_result",
-                        f"{name} result: {preview}...",
-                    )
-                    reasoning_steps.append(result_step)
-
-                    print(f"    ✓ {name}: {preview}...")
-                    tool_messages.append(
-                        ToolMessage(content=content, tool_call_id=call_id)
-                    )
-
-                history.extend(tool_messages)
-
-            # Get final answer
-            final = next(
-                (m for m in reversed(history) if isinstance(m, AIMessage)),
-                AIMessage(content="I was unable to complete the task."),
-            )
-
-            # Add final answer to reasoning
-            final_step = ReasoningStep(
-                "final_answer",
-                final.content[:1000] if final.content else "No response generated",
-            )
-            reasoning_steps.append(final_step)
-
-            logger.info(
-                "Agent node finished with final response",
-                extra={
-                    "correlation_id": correlation_id,
-                    "response_length": (
-                        len(final.content) if hasattr(final, "content") else 0
-                    ),
-                    "reasoning_steps": len(reasoning_steps),
-                },
-            )
-
-            # Store reasoning steps in message metadata (not in state)
-            final.metadata = {"reasoning_steps": reasoning_steps}
-
-            return {"messages": [final]}
-
-        except LLMException:
-            raise
-        except Exception as e:
-            logger.error(
-                f"Agent node failed: {str(e)}",
-                extra={"correlation_id": correlation_id},
-                exc_info=True,
-            )
-            raise LLMException(
-                f"Agent execution failed: {str(e)}", sys, correlation_id=correlation_id
-            )
+        answer = strip_think(message_text(final.content)) if final else ""
+        if not answer:
+            answer = "I couldn't put together an answer from the tool results. Try rephrasing the question."
+        return {"messages": [AIMessage(content=answer)]}

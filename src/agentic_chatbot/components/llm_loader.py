@@ -1,188 +1,163 @@
-import sys
-import os
-import yaml
-import logging
-from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
-from langchain_ollama import ChatOllama
+"""
+LLM factory.
 
-from agentic_chatbot.exception.exception import LLMException
-from agentic_chatbot.logging.logging_utils import get_correlation_id
+``get_llm("main")`` returns the answering model; ``get_llm("router")`` returns the
+(optionally cheaper) model used for routing, titles and summaries. Instances are
+created lazily and cached, so importing a node no longer opens network clients
+or fails at import time when an API key is missing.
+"""
+
+from __future__ import annotations
+
+import logging
+from functools import lru_cache
+from typing import Any, Literal
+
+from langchain_core.language_models import BaseChatModel
+
+from agentic_chatbot.core.settings import config_section, get_settings
+from agentic_chatbot.exception.exception import LLMConfigError
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+Role = Literal["main", "router"]
+
+_ALIASES = {"local2": "ollama", "anthropic": "claude"}
+_KEY_ENV = {
+    "claude": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+}
+
+
+def _provider_name(role: Role) -> str:
+    cfg = config_section("llm")
+    provider = get_settings().llm_provider or cfg.get("active_provider") or "claude"
+    if role == "router" and cfg.get("router_provider"):
+        provider = cfg["router_provider"]
+    provider = str(provider).strip().lower()
+    return _ALIASES.get(provider, provider)
+
+
+def _provider_config(provider: str) -> dict[str, Any]:
+    cfg = config_section("llm")
+    block = cfg.get(provider)
+    if block is None:
+        # accept the legacy key name for ollama
+        legacy = {v: k for k, v in _ALIASES.items()}.get(provider)
+        block = cfg.get(legacy) if legacy else None
+    return dict(block or {})
+
+
+def _model_name(provider: str, role: Role) -> str:
+    block = _provider_config(provider)
+    if role == "router" and block.get("router_model_name"):
+        return str(block["router_model_name"])
+    return str(block.get("model_name") or "")
+
+
+def describe_llm() -> dict[str, Any]:
+    """Non-secret description of the configured models, for /api/meta."""
+    info: dict[str, Any] = {}
+    for role in ("main", "router"):
+        provider = _provider_name(role)  # type: ignore[arg-type]
+        info[role] = {"provider": provider, "model": _model_name(provider, role) or provider}  # type: ignore[arg-type]
+    try:
+        get_llm("main")
+        info["configured"] = True
+        info["error"] = None
+    except LLMConfigError as exc:
+        info["configured"] = False
+        info["error"] = exc.public_message
+    return info
+
+
+def _build(provider: str, role: Role) -> BaseChatModel:
+    block = _provider_config(provider)
+    common = config_section("llm")
+    timeout = float(common.get("request_timeout_seconds", 120))
+    retries = int(common.get("max_retries", 2))
+    model = _model_name(provider, role)
+    temperature = float(block.get("temperature", 0.3)) if role == "main" else 0.0
+
+    if provider == "demo":
+        from agentic_chatbot.components.demo_llm import DemoChatModel
+
+        return DemoChatModel()
+
+    if provider in _KEY_ENV and not block.get("api_key"):
+        raise LLMConfigError(
+            f"{_KEY_ENV[provider]} is not set",
+            public_message=(
+                f"The '{provider}' model needs {_KEY_ENV[provider]}. Add it to .env, "
+                "or set LLM_PROVIDER=demo to try the app without a key."
+            ),
+        )
+    if not model:
+        raise LLMConfigError(
+            f"No model_name configured for provider '{provider}'",
+            public_message=f"config.yaml has no model_name for provider '{provider}'.",
+        )
+
+    if provider == "claude":
+        from langchain_anthropic import ChatAnthropic
+
+        return ChatAnthropic(
+            model=model,
+            api_key=block["api_key"],
+            temperature=temperature,
+            max_tokens=int(block.get("max_tokens", 4096)) if role == "main" else 1024,
+            timeout=timeout,
+            max_retries=retries,
+        )
+
+    if provider in ("openai", "openrouter", "local"):
+        from langchain_openai import ChatOpenAI
+
+        kwargs: dict[str, Any] = dict(
+            model=model,
+            api_key=block.get("api_key") or "not-needed",
+            temperature=temperature,
+            timeout=timeout,
+            max_retries=retries,
+        )
+        if block.get("base_url"):
+            kwargs["base_url"] = block["base_url"]
+        return ChatOpenAI(**kwargs)
+
+    if provider == "ollama":
+        from langchain_ollama import ChatOllama
+
+        kwargs = dict(model=model, base_url=block.get("base_url"), temperature=temperature)
+        if "reasoning" in block and "reasoning" in ChatOllama.model_fields:
+            kwargs["reasoning"] = bool(block["reasoning"])
+        return ChatOllama(**kwargs)
+
+    raise LLMConfigError(
+        f"Unknown LLM provider: {provider}",
+        public_message=(
+            f"Unknown LLM provider '{provider}'. Use one of: claude, openai, openrouter, ollama, local, demo."
+        ),
+    )
+
+
+@lru_cache(maxsize=4)
+def _cached(provider: str, role: Role) -> BaseChatModel:
+    llm = _build(provider, role)
+    logger.info("LLM ready", extra={"provider": provider, "role": role, "model": _model_name(provider, role)})
+    return llm
+
+
+def get_llm(role: Role = "main") -> BaseChatModel:
+    return _cached(_provider_name(role), role)
+
+
+def reset_llm_cache() -> None:
+    _cached.cache_clear()
 
 
 class LLMLoader:
-    """Loads and configures LLM instances based on config."""
+    """Backwards-compatible wrapper for code that used ``LLMLoader().load_llm()``."""
 
-    def __init__(self):
-        correlation_id = get_correlation_id()
-        try:
-            logger.debug(
-                "Loading LLM configuration", extra={"correlation_id": correlation_id}
-            )
-
-            with open("config/config.yaml", "r") as file:
-                self.config = yaml.safe_load(file)
-
-            logger.debug(
-                "LLM configuration loaded successfully",
-                extra={"correlation_id": correlation_id},
-            )
-        except FileNotFoundError as e:
-            logger.error(
-                "Config file not found",
-                extra={"correlation_id": correlation_id},
-                exc_info=True,
-            )
-            raise LLMException(
-                "Failed to load config/config.yaml", sys, correlation_id=correlation_id
-            )
-        except yaml.YAMLError as e:
-            logger.error(
-                "Failed to parse YAML config",
-                extra={"correlation_id": correlation_id},
-                exc_info=True,
-            )
-            raise LLMException(
-                f"Invalid YAML in config file: {str(e)}",
-                sys,
-                correlation_id=correlation_id,
-            )
-        except Exception as e:
-            logger.error(
-                "Unexpected error loading config",
-                extra={"correlation_id": correlation_id},
-                exc_info=True,
-            )
-            raise LLMException(
-                f"Failed to initialize LLMLoader: {str(e)}",
-                sys,
-                correlation_id=correlation_id,
-            )
-
-    def load_llm(self):
-        """Load and instantiate LLM based on active provider."""
-        correlation_id = get_correlation_id()
-
-        try:
-            provider = self.config["llm"]["active_provider"]
-            logger.debug(
-                f"Loading LLM provider: {provider}",
-                extra={"correlation_id": correlation_id},
-            )
-
-            if provider == "local":
-                llm_config = self.config["llm"]["local"]
-                logger.info(
-                    "Initializing local OpenAI-compatible LLM",
-                    extra={"correlation_id": correlation_id, "provider": "local"},
-                )
-
-                return ChatOpenAI(
-                    model=llm_config["model_name"],
-                    api_key=llm_config["api_key"],
-                    base_url=llm_config["base_url"],
-                )
-
-            elif provider == "local2":
-                llm_config = self.config["llm"]["local2"]
-                logger.info(
-                    "Initializing Ollama LLM",
-                    extra={"correlation_id": correlation_id, "provider": "local2"},
-                )
-
-                return ChatOllama(
-                    model=llm_config["model_name"],
-                    base_url=llm_config["base_url"],
-                    temperature=llm_config.get("temperature", 0.5),
-                )
-
-            elif provider == "claude":
-                llm_config = self.config["llm"]["claude"]
-                api_key = os.getenv("ANTHROPIC_API_KEY")
-                if not api_key:
-                    logger.error(
-                        "ANTHROPIC_API_KEY not set in environment",
-                        extra={"correlation_id": correlation_id},
-                    )
-                    raise LLMException(
-                        "ANTHROPIC_API_KEY environment variable not set",
-                        sys,
-                        correlation_id=correlation_id,
-                    )
-
-                logger.info(
-                    "Initializing Claude LLM",
-                    extra={"correlation_id": correlation_id, "provider": "claude"},
-                )
-
-                return ChatAnthropic(
-                    model=llm_config["model_name"],
-                    api_key=api_key,
-                    temperature=llm_config["temperature"],
-                )
-
-            elif provider == "openrouter":
-                llm_config = self.config["llm"]["openrouter"]
-                api_key = os.getenv("OPENROUTER_API_KEY")
-                if not api_key:
-                    logger.error(
-                        "OPENROUTER_API_KEY not set in environment",
-                        extra={"correlation_id": correlation_id},
-                    )
-                    raise LLMException(
-                        "OPENROUTER_API_KEY environment variable not set",
-                        sys,
-                        correlation_id=correlation_id,
-                    )
-
-                logger.info(
-                    "Initializing OpenRouter LLM",
-                    extra={"correlation_id": correlation_id, "provider": "openrouter"},
-                )
-
-                return ChatOpenAI(
-                    model=llm_config["model_name"],
-                    api_key=api_key,
-                    base_url=llm_config["base_url"],
-                    temperature=llm_config.get("temperature", 0.5),
-                )
-
-            else:
-                logger.error(
-                    f"Unknown LLM provider: {provider}",
-                    extra={"correlation_id": correlation_id},
-                )
-                raise LLMException(
-                    f"Unknown LLM provider: {provider}",
-                    sys,
-                    correlation_id=correlation_id,
-                    error_code="UNKNOWN_PROVIDER",
-                )
-
-        except LLMException:
-            raise
-        except KeyError as e:
-            logger.error(
-                f"Missing required config key: {str(e)}",
-                extra={"correlation_id": correlation_id},
-                exc_info=True,
-            )
-            raise LLMException(
-                f"Invalid LLM configuration: {str(e)}",
-                sys,
-                correlation_id=correlation_id,
-            )
-        except Exception as e:
-            logger.error(
-                f"Failed to load LLM: {str(e)}",
-                extra={"correlation_id": correlation_id},
-                exc_info=True,
-            )
-            raise LLMException(
-                f"Failed to load LLM: {str(e)}", sys, correlation_id=correlation_id
-            )
+    def load_llm(self) -> BaseChatModel:
+        return get_llm("main")

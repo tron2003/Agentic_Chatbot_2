@@ -1,5 +1,10 @@
+# MCP servers exposed to the research agent as tools.
+# A server that fails to start is skipped with a warning; the API still boots.
+# Set ENABLE_MCP=false to skip all of them (for example on hosts without Node).
+
 servers:
   filesystem:
+    enabled: true
     transport: stdio
     command: npx
     args:
@@ -8,6 +13,8 @@ servers:
       - ./workspace
 
   github:
+    enabled: true
+    requires_env: [GITHUB_TOKEN]   # skipped when the token is not set
     transport: stdio
     command: npx
     args:

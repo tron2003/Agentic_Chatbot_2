@@ -1,44 +1,73 @@
-from langchain_tavily import TavilySearch
-from langchain_core.tools import tool
-from dotenv import load_dotenv
+"""Tavily web search tool.
+
+Returns readable text for the model *and* the structured results as the tool
+message artifact, so the UI can show proper source links.
+"""
+
+from __future__ import annotations
+
+import logging
 import os
+from functools import lru_cache
+from typing import Any
 
-load_dotenv()
+from langchain_core.tools import tool
 
-# Initialize TavilySearch only if API key is available
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-search = None
+from agentic_chatbot.core.settings import config_section
 
-if TAVILY_API_KEY:
+logger = logging.getLogger(__name__)
+
+
+def web_search_available() -> bool:
+    return bool(os.getenv("TAVILY_API_KEY"))
+
+
+@lru_cache(maxsize=1)
+def _client():
+    from langchain_tavily import TavilySearch
+
+    return TavilySearch(
+        api_key=os.environ["TAVILY_API_KEY"],
+        max_results=int(config_section("agent").get("web_results", 5)),
+        search_depth="advanced",
+    )
+
+
+def _normalise(raw: Any) -> tuple[str | None, list[dict]]:
+    if isinstance(raw, list):
+        return None, raw
+    if isinstance(raw, dict):
+        return raw.get("answer"), list(raw.get("results") or [])
+    return None, []
+
+
+@tool(response_format="content_and_artifact")
+async def web_search(query: str) -> tuple[str, list[dict]]:
+    """Search the web for current information: news, recent events, releases, prices, sports,
+    people's current roles, or any fact that may have changed. Input is a focused search query."""
     try:
-        search = TavilySearch(api_key=TAVILY_API_KEY, max_results=5)
-    except Exception as e:
-        print(f"⚠️  Failed to initialize TavilySearch: {e}")
-else:
-    print("⚠️  TAVILY_API_KEY not set. Web search will return mock results.")
+        raw = await _client().ainvoke({"query": query})
+    except Exception as exc:
+        logger.warning("Web search failed: %s", exc)
+        return f"Web search failed: {exc}", []
 
+    answer, results = _normalise(raw)
+    if not results:
+        return "No results found. Try a different or broader query.", []
 
-@tool
-def web_search(query: str) -> str:
-    """
-    Search the web for latest information.
-    Use for news, recent events, facts not in memory, internet queries.
-    """
-    if not search:
-        return f"[Mock Search Result] No web search API available. Query was: '{query}'. Please set TAVILY_API_KEY in .env to enable real web search."
-
-    try:
-        raw = search.invoke(query)
-        results = raw if isinstance(raw, list) else raw.get("results", [])
-
-        if not results:
-            return "No results found."
-
-        print(f"Query asked: {query}")
-        print(f"Answer from tool: {raw}")
-
-        return "\n\n".join(
-            f"Source: {r['url']}\nTitle: {r['title']}\n{r['content']}" for r in results
-        )
-    except Exception as e:
-        return f"Error searching web: {str(e)}"
+    sources = [
+        {
+            "kind": "web",
+            "title": r.get("title") or r.get("url", ""),
+            "url": r.get("url", ""),
+            "snippet": (r.get("content") or "")[:300],
+        }
+        for r in results
+        if r.get("url")
+    ]
+    blocks = [
+        f"[{i}] {r.get('title', '')}\nURL: {r.get('url', '')}\n{(r.get('content') or '').strip()}"
+        for i, r in enumerate(results, start=1)
+    ]
+    header = f"Summary from search engine: {answer}\n\n" if answer else ""
+    return header + "\n\n".join(blocks), sources

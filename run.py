@@ -1,134 +1,63 @@
 #!/usr/bin/env python
 """
-Production startup script for the Agentic Chatbot.
-Handles environment configuration, dependency checks, and server startup.
+Start the API server.
+
+    python run.py                         # uses ENVIRONMENT from .env (development by default)
+    python run.py --env production --workers 2
+    python run.py --port 9000
+
+Environment variables come from .env (see .env.example). In development the
+server reloads on code changes. With more than one worker, set DB_URI so all
+workers share conversation memory through Postgres.
 """
 
+from __future__ import annotations
+
+import argparse
 import os
 import sys
-import argparse
-import logging
 from pathlib import Path
-import subprocess
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
-def load_environment(environment: str = "production"):
-    """Load environment variables from .env file."""
-    env_file = Path(f".env.{environment}")
-    if not env_file.exists():
-        env_file = Path(".env")
-
-    if env_file.exists():
-        logger.info(f"📋 Loading environment from {env_file}")
-        with open(env_file) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    key, _, value = line.partition("=")
-                    os.environ[key] = value
-    else:
-        logger.warning("⚠️  No .env file found. Using system environment variables.")
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "src"))
 
 
-def check_requirements():
-    """Check that all required dependencies are installed."""
-    try:
-        import fastapi
-        import langchain
-        import langgraph
-        import psycopg
+def main() -> None:
+    from agentic_chatbot.core.settings import get_settings
 
-        logger.info("✅ All required dependencies are installed")
-        return True
-    except ImportError as e:
-        logger.error(f"❌ Missing dependency: {e}")
-        return False
+    settings = get_settings()
+    parser = argparse.ArgumentParser(description="Run the agentic chatbot API")
+    parser.add_argument("--env", "--environment", dest="env", default=settings.environment,
+                        choices=["development", "staging", "production"])
+    parser.add_argument("--host", default=os.getenv("SERVER_HOST", "0.0.0.0"))
+    parser.add_argument("--port", type=int, default=int(os.getenv("PORT", os.getenv("SERVER_PORT", "8001"))))
+    parser.add_argument("--workers", type=int, default=int(os.getenv("WEB_CONCURRENCY", "1")))
+    args = parser.parse_args()
 
+    os.environ["ENVIRONMENT"] = args.env
+    from agentic_chatbot.core.settings import reset_caches
 
-def ensure_directories():
-    """Ensure all required directories exist."""
-    directories = [
-        "artifacts/logs",
-        "workspace/uploads",
-        "config",
-    ]
-    for directory in directories:
-        Path(directory).mkdir(parents=True, exist_ok=True)
-    logger.info("✅ All required directories created")
+    reset_caches()
+    dev = args.env == "development"
+    if args.workers > 1 and not settings.db_uri:
+        print("Warning: several workers without DB_URI means each worker has its own memory. "
+              "Set DB_URI (Postgres) or use --workers 1.", file=sys.stderr)
 
-
-def start_server(environment: str = "production", workers: int = 1):
-    """Start the FastAPI server."""
-    logger.info(f"🚀 Starting Agentic Chatbot in {environment} environment...")
-
-    # Check database connection
-    db_uri = os.getenv("DB_URI")
-    if not db_uri:
-        logger.error(
-            "❌ Error: DB_URI not set. Please configure your database connection."
-        )
-        sys.exit(1)
-
-    logger.info(f"🔗 Database: {db_uri[:50]}...")
-
-    # Start the server
     import uvicorn
-
-    server_host = os.getenv("SERVER_HOST", "0.0.0.0")
-    server_port = int(os.getenv("SERVER_PORT", "8001"))
-
-    logger.info(f"🌍 Server: {server_host}:{server_port}")
 
     uvicorn.run(
         "backend_api:app",
-        host=server_host,
-        port=server_port,
-        workers=workers,
-        reload=environment == "development",
-        log_level="info",
+        app_dir=str(ROOT),
+        host=args.host,
+        port=args.port,
+        workers=1 if dev else args.workers,
+        reload=dev,
+        reload_dirs=[str(ROOT / "src")] if dev else None,
+        proxy_headers=True,
+        forwarded_allow_ips=os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1"),
+        timeout_graceful_shutdown=20,
+        log_level=settings.log_level.lower(),
     )
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Start the Agentic Chatbot API server")
-    parser.add_argument(
-        "--environment",
-        choices=["development", "staging", "production"],
-        default="production",
-        help="Deployment environment",
-    )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=4,
-        help="Number of Uvicorn worker processes",
-    )
-
-    args = parser.parse_args()
-
-    # Setup environment
-    load_environment(args.environment)
-
-    # Ensure directories exist
-    ensure_directories()
-
-    # Check requirements
-    if not check_requirements():
-        logger.error("❌ Failed dependency check. Run: pip install -r requirements.txt")
-        sys.exit(1)
-
-    # Start server
-    try:
-        start_server(args.environment, args.workers)
-    except KeyboardInterrupt:
-        logger.info("\n👋 Shutting down gracefully...")
-        sys.exit(0)
-    except Exception as e:
-        logger.error(f"❌ Server error: {e}", exc_info=True)
-        sys.exit(1)
 
 
 if __name__ == "__main__":

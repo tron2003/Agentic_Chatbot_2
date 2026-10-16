@@ -1,117 +1,64 @@
-import sys
+"""RAG route: retrieve passages from the knowledge base, answer with citations."""
+
+from __future__ import annotations
+
 import logging
-from langchain_core.messages import SystemMessage, HumanMessage
-from agentic_chatbot.components.vector_store_loader import VectorStoreLoader
-from agentic_chatbot.components.llm_loader import LLMLoader
-from agentic_chatbot.prompts.rag_prompt import RAG_PROMPT
-from agentic_chatbot.utils.message_builder import build_messages
-from agentic_chatbot.exception.exception import LLMException, VectorStoreException
-from agentic_chatbot.logging.logging_utils import (
-    ExecutionTimer,
-    get_correlation_id,
-    log_async,
-)
+
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
+
+from agentic_chatbot.components.llm_loader import get_llm
+from agentic_chatbot.core.settings import config_section
+from agentic_chatbot.entity.chat_state import Chatbot
+from agentic_chatbot.exception.exception import VectorStoreException
+from agentic_chatbot.logging.logging_utils import ExecutionTimer
+from agentic_chatbot.nodes.events import emit, step
+from agentic_chatbot.prompts.rag_prompt import build_rag_prompt
+from agentic_chatbot.services.knowledge_base import get_knowledge_base
+from agentic_chatbot.utils.message_builder import conversational, latest_user_text, message_text, strip_think
 
 logger = logging.getLogger(__name__)
 
-vector_db = VectorStoreLoader().load_vectorstore()
-llm = LLMLoader().load_llm()
 
+async def rag_node(state: Chatbot, config: RunnableConfig) -> dict:
+    with ExecutionTimer("rag_node", logger_instance=logger):
+        question = latest_user_text(state.messages)
+        step_id = "retrieval"
+        step("retrieval", "Searching your documents", question[:160], step_id=step_id, status="running")
 
-@log_async()
-async def rag_node(state):
-    """
-    RAG node for retrieving and grounding responses with knowledge base documents.
-    Performs semantic search and augments LLM response with retrieved context.
-    """
-    correlation_id = get_correlation_id()
-
-    with ExecutionTimer("rag_node", correlation_id, logger):
+        failed = False
         try:
-            if not state.messages:
-                logger.error(
-                    "No messages in state", extra={"correlation_id": correlation_id}
-                )
-                raise LLMException(
-                    "No messages provided for RAG", sys, correlation_id=correlation_id
-                )
+            docs = await get_knowledge_base().search(question)
+        except VectorStoreException as exc:
+            logger.error("Retrieval failed: %s", exc)
+            step("retrieval", "Document search failed", exc.public_message, step_id=step_id, status="error")
+            docs, failed = [], True
 
-            question = state.messages[-1].content
-            logger.debug(
-                f"RAG query: {question[:100]}...",
-                extra={"correlation_id": correlation_id},
-            )
+        blocks, sources = [], []
+        for i, doc in enumerate(docs, start=1):
+            name = doc.metadata.get("source_name", "document")
+            page = doc.metadata.get("page")
+            label = f"source: {name}" + (f", page {page}" if page else "")
+            blocks.append(f"[{i}] ({label})\n{doc.page_content.strip()}")
+            sources.append({
+                "kind": "doc",
+                "index": i,
+                "title": name,
+                "page": page,
+                "doc_id": doc.metadata.get("doc_id"),
+                "snippet": doc.page_content.strip()[:280],
+            })
 
-            # Retrieve relevant documents
-            logger.debug(
-                "Performing vector search for relevant documents",
-                extra={"correlation_id": correlation_id},
-            )
+        files = sorted({s["title"] for s in sources})
+        if docs:
+            step("retrieval", f"Found {len(docs)} passage{'s' if len(docs) != 1 else ''} in {len(files)} document{'s' if len(files) != 1 else ''}",
+                 ", ".join(files), step_id=step_id)
+            emit({"type": "sources", "items": sources})
+        elif not failed:
+            step("retrieval", "No matching passages", "Answering with what the model knows.", step_id=step_id)
 
-            try:
-                docs = vector_db.max_marginal_relevance_search(
-                    question, k=10, fetch_k=30
-                )
-                logger.info(
-                    f"Retrieved {len(docs)} documents from vector store",
-                    extra={"correlation_id": correlation_id},
-                )
-            except Exception as e:
-                logger.error(
-                    f"Vector store search failed: {str(e)}",
-                    extra={"correlation_id": correlation_id},
-                    exc_info=True,
-                )
-                raise VectorStoreException(
-                    f"Failed to retrieve documents: {str(e)}",
-                    sys,
-                    correlation_id=correlation_id,
-                )
-
-            context = "\n".join(doc.page_content for doc in docs)
-            context_length = len(context.split())
-            logger.debug(
-                f"RAG context prepared: {context_length} words",
-                extra={"correlation_id": correlation_id},
-            )
-
-            # RAG system prompt with retrieved document context
-            filled_prompt = RAG_PROMPT.format(context=context)
-
-            # Build full message list: RAG prompt + conversation history (summary + recent messages)
-            messages = [SystemMessage(content=filled_prompt)]
-            messages.extend(build_messages(state))
-
-            logger.debug(
-                f"RAG conversation prepared with {len(messages)} messages",
-                extra={"correlation_id": correlation_id},
-            )
-
-            response = await llm.ainvoke(messages)
-
-            logger.info(
-                "RAG response generated successfully",
-                extra={
-                    "correlation_id": correlation_id,
-                    "response_length": (
-                        len(response.content) if hasattr(response, "content") else 0
-                    ),
-                    "documents_used": len(docs),
-                },
-            )
-
-            return {"messages": [response]}
-
-        except (LLMException, VectorStoreException):
-            raise
-        except Exception as e:
-            logger.error(
-                f"RAG node failed: {str(e)}",
-                extra={"correlation_id": correlation_id},
-                exc_info=True,
-            )
-            raise LLMException(
-                f"Failed to generate RAG response: {str(e)}",
-                sys,
-                correlation_id=correlation_id,
-            )
+        limit = int(config_section("memory").get("context_messages", 12))
+        messages = [SystemMessage(content=build_rag_prompt("\n\n".join(blocks), state.summary))]
+        messages.extend(conversational(state.messages, limit))
+        response = await get_llm("main").ainvoke(messages, config=config)
+        return {"messages": [AIMessage(content=strip_think(message_text(response.content)), id=response.id)]}

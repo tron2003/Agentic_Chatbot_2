@@ -1,104 +1,81 @@
-import sys
+"""Router: decide whether a message goes to chat, rag (documents) or agent (tools)."""
+
+from __future__ import annotations
+
 import logging
-from langchain_core.messages import SystemMessage, HumanMessage
-from agentic_chatbot.components.llm_loader import LLMLoader
-from agentic_chatbot.prompts.router_prompt import SYSTEM_PROMPT
+import re
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
+
+from agentic_chatbot.components.llm_loader import get_llm
+from agentic_chatbot.core.settings import config_section
+from agentic_chatbot.entity.chat_state import Chatbot
 from agentic_chatbot.entity.router import Router
-from agentic_chatbot.exception.exception import LLMException
-from agentic_chatbot.logging.logging_utils import ExecutionTimer, get_correlation_id
+from agentic_chatbot.exception.exception import LLMConfigError
+from agentic_chatbot.logging.logging_utils import ExecutionTimer
+from agentic_chatbot.nodes.events import emit, step
+from agentic_chatbot.prompts.router_prompt import build_router_prompt
+from agentic_chatbot.services.knowledge_base import get_knowledge_base
+from agentic_chatbot.tools.mcp_tools import get_agent_tools
+from agentic_chatbot.utils.message_builder import conversational, latest_user_text, transcript
 
 logger = logging.getLogger(__name__)
 
-llm = LLMLoader().load_llm()
-structured_llm = llm.with_structured_output(Router)
+_AGENT_HINT = re.compile(
+    r"\b(today|tonight|latest|news|current(ly)?|right now|price|stock|score|weather|release[sd]?|"
+    r"this (week|month|year)|who (is|won)|search|look up|calculate|compute|20[2-3]\d)\b|\d+\s*[-+*/^]\s*\d+",
+    re.I,
+)
+_DOC_HINT = re.compile(r"\b(document|docs|pdf|paper|report|file|uploaded|my notes|knowledge base)\b", re.I)
 
-ROUTER_SYSTEM_PROMPT = f"""{SYSTEM_PROMPT}
-
-ROUTING OPTIONS:
-1. "chat" — Simple conversational response, general questions
-2. "rag" — Query requires knowledge from ingested documents/knowledge base
-3. "agent" — Complex multi-step tasks, requires tool use, research, verification
-
-Choose "agent" for:
-- Research tasks that need multiple tools/sources
-- Complex problem-solving requiring step-by-step reasoning
-- Tasks involving web search, file reading, or code analysis
-- Verification tasks requiring multiple sources
-- Any task needing transparency in reasoning steps"""
+ROUTE_LABELS = {"chat": "Chat", "rag": "Documents", "agent": "Research"}
 
 
-def router_node(state):
-    """
-    Route incoming query to appropriate handler (chat, rag, or agent).
-    """
-    correlation_id = get_correlation_id()
+def heuristic_route(text: str, kb_available: bool) -> Router:
+    """Used when the model can't produce a structured routing decision."""
+    if kb_available and _DOC_HINT.search(text):
+        return Router(route="rag", reason="Mentions the user's documents.")
+    if _AGENT_HINT.search(text):
+        return Router(route="agent", reason="Looks time-sensitive or needs a tool.")
+    return Router(route="chat", reason="General conversation.")
 
-    with ExecutionTimer("router_node", correlation_id, logger):
+
+async def router_node(state: Chatbot, config: RunnableConfig) -> dict:
+    with ExecutionTimer("router_node", logger_instance=logger):
+        question = latest_user_text(state.messages)
+        kb = get_knowledge_base()
+        documents = await kb.document_names()
+        kb_available = bool(documents)
+        tool_names = [t.name for t in get_agent_tools(include_kb=kb_available)]
+
+        history = conversational(state.messages[:-1], int(config_section("memory").get("context_messages", 12)))[-6:]
+        prompt = (
+            (f"Conversation summary:\n{state.summary}\n\n" if state.summary else "")
+            + (f"Recent conversation:\n{transcript(history, 600)}\n\n" if history else "")
+            + f"Latest user message:\n{question}"
+        )
+
         try:
-            if not state.messages:
-                logger.error(
-                    "No messages in state", extra={"correlation_id": correlation_id}
-                )
-                raise LLMException(
-                    "No messages provided for routing",
-                    sys,
-                    correlation_id=correlation_id,
-                    error_code="NO_MESSAGES_ERROR",
-                )
-
-            question = state.messages[-1].content
-            logger.debug(
-                f"Routing query: {question[:100]}...",
-                extra={"correlation_id": correlation_id},
+            structured = get_llm("router").with_structured_output(Router)
+            decision = await structured.ainvoke(
+                [SystemMessage(content=build_router_prompt(documents, tool_names)), HumanMessage(content=prompt)],
+                config={**config, "tags": [*config.get("tags", []), "nostream"]},
             )
-
-            # Build context from recent conversation
-            context_messages = [SystemMessage(content=ROUTER_SYSTEM_PROMPT)]
-
-            # Include summary if available
-            if state.summary:
-                logger.debug(
-                    "Including conversation summary in routing context",
-                    extra={"correlation_id": correlation_id},
-                )
-                context_messages.append(
-                    SystemMessage(content=f"Conversation Summary:\n{state.summary}")
-                )
-
-            # Include last few messages for context
-            recent = state.messages[-6:]
-            context_messages.extend(recent)
-
-            logger.debug(
-                f"Router context prepared with {len(context_messages)} messages",
-                extra={"correlation_id": correlation_id},
-            )
-
-            result = structured_llm.invoke(context_messages)
-
-            logger.info(
-                f"Route decision: {result.route}",
-                extra={
-                    "correlation_id": correlation_id,
-                    "route": result.route,
-                    "reason": result.reason,
-                },
-            )
-
-            print(f"\nQuestion: {question}")
-            print(f"Route: {result.route}")
-            print(f"Reason: {result.reason}")
-
-            return {"route": result.route}
-
-        except LLMException:
+            if not isinstance(decision, Router):
+                decision = Router.model_validate(decision)
+        except LLMConfigError:
             raise
-        except Exception as e:
-            logger.error(
-                f"Router node failed: {str(e)}",
-                extra={"correlation_id": correlation_id},
-                exc_info=True,
-            )
-            raise LLMException(
-                f"Failed to route query: {str(e)}", sys, correlation_id=correlation_id
-            )
+        except Exception as exc:
+            logger.warning("Router model failed (%s); using heuristic routing", exc)
+            decision = heuristic_route(question, kb_available)
+
+        route = decision.route
+        reason = decision.reason
+        if route == "rag" and not kb_available:
+            route, reason = "chat", "The knowledge base is empty, so answering directly."
+
+        logger.info("Route decision", extra={"route": route, "reason": reason})
+        emit({"type": "route", "route": route, "label": ROUTE_LABELS[route], "reason": reason})
+        step("route", f"Routed to {ROUTE_LABELS[route]}", reason)
+        return {"route": route}

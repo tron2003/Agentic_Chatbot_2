@@ -1,53 +1,333 @@
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+@import 'tailwindcss';
 
-@import "tailwindcss";
+/*
+  Junction design tokens.
+  Midnight transit map (dark) and paper route map (light). The three route
+  colours carry meaning everywhere they appear: chat = sky, documents = brass,
+  research = sea. They are never used as decoration on their own.
+*/
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+:root {
+  color-scheme: light;
+  --bg: #eef2f7;
+  --bg-raised: #ffffff;
+  --bg-sunk: #e3e9f1;
+  --panel: rgb(255 255 255 / 0.78);
+  --line: #d5dce7;
+  --line-strong: #b4c0d2;
+  --text: #13213a;
+  --text-muted: #4f5f79;
+  --text-faint: #8391a7;
+  --route-chat: #2f6fd6;
+  --route-docs: #a8740a;
+  --route-agent: #12876f;
+  --accent: #2f6fd6;
+  --accent-ink: #ffffff;
+  --danger: #c43d2c;
+  --glow-opacity: 0.22;
+  --dot: rgb(19 33 58 / 0.16);
+  --shadow-lift: 0 1px 0 rgb(19 33 58 / 0.04), 0 12px 32px -14px rgb(19 33 58 / 0.25);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0d1626;
+  --bg-raised: #142036;
+  --bg-sunk: #0a1220;
+  --panel: rgb(20 32 54 / 0.72);
+  --line: #233350;
+  --line-strong: #344a70;
+  --text: #e9eef6;
+  --text-muted: #9aa9c0;
+  --text-faint: #62728c;
+  --route-chat: #9cc4ff;
+  --route-docs: #f2c14e;
+  --route-agent: #5ed3b5;
+  --accent: #9cc4ff;
+  --accent-ink: #0d1626;
+  --danger: #ff8a7a;
+  --glow-opacity: 0.16;
+  --dot: rgb(233 238 246 / 0.13);
+  --shadow-lift: 0 1px 0 rgb(0 0 0 / 0.2), 0 16px 40px -18px rgb(0 0 0 / 0.7);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg: #0d1626;
+    --bg-raised: #142036;
+    --bg-sunk: #0a1220;
+    --panel: rgb(20 32 54 / 0.72);
+    --line: #233350;
+    --line-strong: #344a70;
+    --text: #e9eef6;
+    --text-muted: #9aa9c0;
+    --text-faint: #62728c;
+    --route-chat: #9cc4ff;
+    --route-docs: #f2c14e;
+    --route-agent: #5ed3b5;
+    --accent: #9cc4ff;
+    --accent-ink: #0d1626;
+    --danger: #ff8a7a;
+    --glow-opacity: 0.16;
+    --dot: rgb(233 238 246 / 0.13);
+    --shadow-lift: 0 1px 0 rgb(0 0 0 / 0.2), 0 16px 40px -18px rgb(0 0 0 / 0.7);
+  }
+}
 
 @theme {
-  --color-background: #FEF7FF;
-  --color-foreground: #1D1B20;
-  --color-primary: #65558F;
-  --color-primary-foreground: #FFFFFF;
-  --color-primary-container: #E8DEF8;
-  --color-surface: #FEF7FF;
-  --color-surface-low: #F7F2FA;
-  --color-surface-dim: #DED8E1;
-  --color-border: #CAC4D0;
-  --color-muted: #E7E0EC;
-  --color-muted-foreground: #49454F;
+  --color-bg: var(--bg);
+  --color-raised: var(--bg-raised);
+  --color-sunk: var(--bg-sunk);
+  --color-panel: var(--panel);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-route-chat: var(--route-chat);
+  --color-route-docs: var(--route-docs);
+  --color-route-agent: var(--route-agent);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
 
-  --font-sans: "Roboto", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-sans: 'Overpass Variable', 'Overpass', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Overpass Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --shadow-lift: var(--shadow-lift);
 }
 
 @layer base {
-  body {
-    background-color: var(--color-background);
-    color: var(--color-foreground);
-    font-family: var(--font-sans);
+  html,
+  body,
+  #root {
+    height: 100%;
   }
-  
-  h1, h2, h3, h4, h5, h6 {
+  body {
+    background: var(--bg);
+    color: var(--text);
     font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'kern', 'liga';
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 35%, transparent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
   }
 }
 
-@layer utilities {
-  .scrollbar-none::-webkit-scrollbar {
-    display: none;
+@layer components {
+  .glass {
+    background: var(--panel);
+    backdrop-filter: blur(18px) saturate(1.3);
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
   }
-  .scrollbar-none {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+  .scroll-quiet {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
   }
+  .scroll-quiet::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-quiet::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .kbd {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 1px 5px;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: var(--bg-raised);
+    color: var(--text-muted);
+  }
+}
 
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 4px;
+@utility caret {
+  &::after {
+    content: '';
+    display: inline-block;
+    width: 0.5em;
+    height: 1.05em;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    border-radius: 2px;
+    background: currentColor;
+    opacity: 0.55;
+    animation: caret-blink 1s steps(2, start) infinite;
   }
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
+}
+
+@keyframes caret-blink {
+  to {
+    visibility: hidden;
   }
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: var(--color-surface-dim);
-    border-radius: 0px;
+}
+
+/* ── Markdown answer typography ─────────────────────────────────────────── */
+.prose-answer {
+  color: var(--text);
+  font-size: 15.5px;
+  line-height: 1.68;
+  overflow-wrap: anywhere;
+}
+.prose-answer > * + * {
+  margin-top: 0.85em;
+}
+.prose-answer h1,
+.prose-answer h2,
+.prose-answer h3,
+.prose-answer h4 {
+  font-weight: 750;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  margin-top: 1.4em;
+}
+.prose-answer h1 {
+  font-size: 1.45em;
+}
+.prose-answer h2 {
+  font-size: 1.25em;
+}
+.prose-answer h3 {
+  font-size: 1.08em;
+}
+.prose-answer h4 {
+  font-size: 1em;
+}
+.prose-answer :first-child {
+  margin-top: 0;
+}
+.prose-answer strong {
+  font-weight: 700;
+}
+.prose-answer a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.prose-answer ul,
+.prose-answer ol {
+  padding-left: 1.35em;
+}
+.prose-answer ul {
+  list-style: disc;
+}
+.prose-answer ol {
+  list-style: decimal;
+}
+.prose-answer li + li {
+  margin-top: 0.3em;
+}
+.prose-answer li::marker {
+  color: var(--text-faint);
+}
+.prose-answer blockquote {
+  border-left: 3px solid var(--line-strong);
+  padding-left: 1em;
+  color: var(--text-muted);
+}
+.prose-answer hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.prose-answer :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  padding: 0.12em 0.38em;
+  border-radius: 6px;
+  background: var(--bg-sunk);
+  border: 1px solid var(--line);
+}
+.prose-answer table {
+  width: 100%;
+  overflow-wrap: normal;
+  word-break: normal;
+  border-collapse: collapse;
+  font-size: 0.93em;
+  display: block;
+  overflow-x: auto;
+}
+.prose-answer th,
+.prose-answer td {
+  min-width: 7rem;
+  text-align: left;
+  padding: 0.5em 0.8em;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.prose-answer th {
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--text-muted);
+  border-bottom-color: var(--line-strong);
+}
+
+/* highlight.js tokens mapped to the palette */
+.hljs {
+  color: var(--text);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--text-faint);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-literal {
+  color: var(--route-chat);
+}
+.hljs-string,
+.hljs-attr,
+.hljs-template-tag,
+.hljs-regexp {
+  color: var(--route-agent);
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-variable,
+.hljs-params {
+  color: var(--route-docs);
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-section {
+  font-weight: 600;
+}
+.hljs-meta,
+.hljs-type {
+  color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

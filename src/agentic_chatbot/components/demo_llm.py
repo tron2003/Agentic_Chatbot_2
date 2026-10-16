@@ -55,7 +55,11 @@ class DemoChatModel(BaseChatModel):
         question = human.split("Latest user message:")[-1].strip()
 
         if "Router" in self.bound_tools:
-            if _DOCS.search(question) and "currently EMPTY" not in system:
+            agents = re.findall(r"the external agent ([\w-]+) to do", system)
+            named = next((a for a in agents if a.lower() in question.lower()), None)
+            if named:
+                route, reason = "agent", f"The user is asking {named} to do something."
+            elif _DOCS.search(question) and "currently EMPTY" not in system:
                 route, reason = "rag", "The question refers to the user's documents."
             elif _MATH.search(question) or _CURRENT.search(question) or _TIME.search(question):
                 route, reason = "agent", "Needs a tool or current information."
@@ -141,6 +145,9 @@ def _chunks(message: AIMessage) -> Iterator[ChatGenerationChunk]:
 
 
 def _pick_tool(question: str, tools: list[str]) -> tuple[str, dict, str] | None:
+    for tool in tools:
+        if tool.startswith("ask_") and tool[4:].replace("_", " ") in question.lower():
+            return tool, {"task": question}, f"I'll hand this to {tool[4:]}."
     math = _MATH.search(question)
     if math and "calculator" in tools:
         expr = math.group(1).replace("x", "*").replace("×", "*").replace("^", "**").strip(" .,")

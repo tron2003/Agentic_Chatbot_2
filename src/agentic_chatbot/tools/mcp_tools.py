@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from langchain_core.tools import BaseTool
 
+from agentic_chatbot.integrations.registry import agent_tools as integration_agent_tools
 from agentic_chatbot.mcp.mcp_manager import mcp_manager
 from agentic_chatbot.tools.kb_tool import search_knowledge_base
 from agentic_chatbot.tools.math_tool import calculator, current_datetime
@@ -23,7 +24,7 @@ def get_agent_tools(include_kb: bool = True) -> list[BaseTool]:
         tools.append(search_knowledge_base)
     tools.append(read_pdf)
     seen = {t.name for t in tools}
-    for t in get_mcp_tools():
+    for t in [*integration_agent_tools(), *get_mcp_tools()]:
         if t.name not in seen:
             tools.append(t)
             seen.add(t.name)

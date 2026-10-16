@@ -73,6 +73,26 @@ Table names are prefixed `chatbot_`, so they can't collide with the `chat_histor
 - Security headers on every response. The CORS allow-list comes from `ALLOWED_ORIGINS`.
 - The Docker image runs as a non-root user under `tini`.
 
+## Integrations
+
+`src/agentic_chatbot/integrations/`, configured by `config/integrations.yaml`. Everything is off by default. See [docs/integrations.md](docs/integrations.md).
+
+```mermaid
+flowchart LR
+    subgraph In[Other apps call Junction]
+      OC1[OpenClaw / Hermes / Open WebUI] -- /v1/chat/completions --> API
+      MC[Claude Desktop / Cursor / MCP clients] -- /mcp --> API
+    end
+    API[Junction pipeline] -- ask_openclaw / ask_hermes tools --> OC2[OpenClaw / Hermes gateways]
+    API -- webhooks --> WH[OpenClaw /hooks/agent, n8n, Zapier]
+```
+
+- `agent_bridge.py` turns each enabled agent into a LangChain tool. The tool reads the current `thread_id` from the injected `RunnableConfig` and sends it as the OpenAI `user`, so the external agent keeps a session per conversation.
+- `openai_compat.py` maps Junction events to OpenAI chunks. Research answers are held until final because `draft_reset` can't be expressed in the OpenAI stream format.
+- `mcp_server.py` builds a stateless FastMCP server. Its route is added to FastAPI behind a bearer-key wrapper, and its session manager runs inside the app lifespan.
+- `webhooks.py` delivers events from background tasks, drained on shutdown.
+- `prepare_turn()` and `ChatTurn` are shared by the web UI, the OpenAI-compatible API and MCP, so every entry point gets the same persistence, titles, events and errors.
+
 ## Frontend
 
 React 19, Vite, Tailwind 4, Motion.

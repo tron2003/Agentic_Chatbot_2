@@ -23,6 +23,10 @@ langchain-postgres==0.0.19
 langchain-tavily==0.2.18
 langchain-mcp-adapters==0.3.2
 
+# Integrations (MCP server, external agents, webhooks)
+mcp==1.30.0
+httpx==0.28.1
+
 # Storage and documents
 psycopg[binary]==3.3.6
 psycopg-pool==3.3.3

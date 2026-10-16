@@ -21,6 +21,7 @@ from agentic_chatbot.components.reranker import get_reranker
 from agentic_chatbot.components.vector_store_loader import get_vector_store, vector_backend
 from agentic_chatbot.core.settings import config_section
 from agentic_chatbot.exception.exception import FileProcessingException, VectorStoreException
+from agentic_chatbot.integrations.webhooks import emit_event
 from agentic_chatbot.services.store import get_store
 from agentic_chatbot.utils.document_loader import DocumentLoader
 
@@ -92,6 +93,7 @@ class KnowledgeBase:
         }
         await get_store().add_document(record)
         self._invalidate()
+        emit_event("document.ingested", {k: v for k, v in record.items() if k != "chunk_ids"})
         logger.info("Ingested document", extra={"doc_id": doc_id, "chunks": len(chunks)})
         return record
 
@@ -107,6 +109,7 @@ class KnowledgeBase:
                 logger.warning("Vector delete failed for %s: %s", doc_id, exc)
         await get_store().delete_document(doc_id)
         self._invalidate()
+        emit_event("document.deleted", {"id": doc_id, "name": record["name"]})
         return True
 
     async def clear(self) -> int:

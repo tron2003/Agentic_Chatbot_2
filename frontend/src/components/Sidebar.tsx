@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Library, Monitor, Moon, Pencil, Plus, Search, Sun, Trash2, X } from 'lucide-react';
 import type { ThemeChoice } from '@/hooks/useTheme';
 import { useChat } from '@/lib/chat-store';
-import type { Conversation } from '@/lib/types';
+import type { Conversation, Integration } from '@/lib/types';
 import { cn, dateGroup, type DateGroup } from '@/lib/utils';
 
 const GROUP_ORDER: DateGroup[] = ['Today', 'Yesterday', 'Previous 7 days', 'Previous 30 days', 'Older'];
@@ -90,6 +90,40 @@ function Row({ c, active, onOpen }: { c: Conversation; active: boolean; onOpen: 
         )}
       </div>
     </div>
+  );
+}
+
+const KIND_LABEL: Record<Integration['kind'], string> = {
+  agent: 'Agent Junction can ask',
+  inbound: 'Lets other apps use Junction',
+  webhook: 'Sends events',
+};
+
+function statusTone(status: string) {
+  if (status === 'ok' || status === 'idle') return 'bg-route-agent';
+  if (status === 'unknown') return 'bg-line-strong';
+  return 'bg-danger';
+}
+
+function Connections() {
+  const { meta } = useChat();
+  const items = meta?.integrations?.items ?? [];
+  const error = meta?.integrations?.error;
+  if (!items.length && !error) return null;
+  return (
+    <section className="px-3 pb-1 pt-1" aria-label="Connections">
+      <h2 className="pb-1 text-[12.5px] font-semibold text-faint">Connections</h2>
+      {error ? <p className="text-[12.5px] leading-snug text-danger">{error}</p> : null}
+      <ul className="space-y-0.5">
+        {items.map((i) => (
+          <li key={i.name} className="flex items-center gap-2 py-0.5" title={`${KIND_LABEL[i.kind]}: ${i.detail} (${i.status})`}>
+            <span className={cn('size-2 shrink-0 rounded-full', statusTone(i.status))} aria-hidden />
+            <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{i.label}</span>
+            <span className="shrink-0 text-[12px] text-faint">{i.status === 'ok' || i.status === 'idle' ? (i.kind === 'agent' ? 'connected' : 'on') : i.status}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -213,6 +247,7 @@ export function Sidebar({
             Document library
             <span className="ml-auto text-[12.5px] text-faint">{documents.length || ''}</span>
           </button>
+          <Connections />
           <div className="flex items-center gap-2 px-3 py-1.5">
             <span
               className={cn('size-2 shrink-0 rounded-full', serverDown ? 'bg-danger' : meta?.llm_ready ? 'bg-route-agent' : 'bg-route-docs')}

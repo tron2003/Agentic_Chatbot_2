@@ -16,11 +16,16 @@ export function Welcome({ onOpenLibrary }: { onOpenLibrary: () => void }) {
 
   const hasDocs = documents.length > 0;
   const web = meta?.web_search ?? false;
+  const agentNames = (meta?.integrations?.items ?? []).filter((i) => i.kind === 'agent').map((i) => i.label);
 
   const descriptions: Record<Route, string> = {
     chat: 'a direct answer',
     rag: hasDocs ? `${documents.length} ${documents.length === 1 ? 'file' : 'files'}, cited` : 'your files, cited',
-    agent: web ? 'web search and tools' : 'tools (web search off)',
+    agent: agentNames.length
+      ? `${web ? 'web, tools' : 'tools'}, ${agentNames.join(', ')}${web ? '' : ' (no web search)'}`
+      : web
+        ? 'web search and tools'
+        : 'tools (web search off)',
   };
 
   const suggestions: { route: Route; text: string; action?: () => void }[] = [

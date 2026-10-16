@@ -26,6 +26,7 @@ from langchain_core.messages import HumanMessage
 from agentic_chatbot.components.llm_loader import describe_llm, get_llm
 from agentic_chatbot.core.context import get_request_id
 from agentic_chatbot.exception.exception import CustomException
+from agentic_chatbot.integrations.webhooks import emit_event
 from agentic_chatbot.pipelines.chatbot_pipeline import ChatbotPipeline
 from agentic_chatbot.prompts.summary_prompt import TITLE_PROMPT
 from agentic_chatbot.services.store import ChatStore
@@ -116,7 +117,7 @@ class _Accumulator:
 class ChatTurn:
     def __init__(self, pipeline: ChatbotPipeline, store: ChatStore, *, conversation_id: str, is_new: bool,
                  message: str | None, model_message: str | None, user_message_id: str | None,
-                 checkpoint_id: str | None = None):
+                 checkpoint_id: str | None = None, source: str = "web"):
         self.pipeline = pipeline
         self.store = store
         self.conversation_id = conversation_id
@@ -125,6 +126,7 @@ class ChatTurn:
         self.model_message = model_message
         self.user_message_id = user_message_id
         self.checkpoint_id = checkpoint_id
+        self.source = source
         self.assistant_id = f"msg_{uuid.uuid4().hex[:20]}"
 
     def _metadata(self, acc: _Accumulator, started: float, **extra: Any) -> dict[str, Any]:
@@ -137,6 +139,7 @@ class ChatTurn:
             "elapsed_ms": int((time.perf_counter() - started) * 1000),
             "model": llm["main"]["model"],
             "request_id": get_request_id(),
+            "source": self.source,
             **extra,
         }
 
@@ -189,6 +192,7 @@ class ChatTurn:
                 if item.get("type") != "answer":
                     yield item
 
+            title: str | None = None
             if title_task:
                 try:
                     title = await asyncio.wait_for(title_task, timeout=12)
@@ -196,10 +200,26 @@ class ChatTurn:
                     title = fallback_title(self.message or "")
                 await self.store.rename_conversation(self.conversation_id, title)
                 yield {"type": "title", "conversation_id": self.conversation_id, "title": title}
+                emit_event("conversation.created", {"conversation_id": self.conversation_id, "title": title,
+                                                    "source": self.source})
 
             stored = await self._persist(acc, started)
             persisted = True
             yield {"type": "done", "message": stored}
+            if title is None:
+                conv = await self.store.get_conversation(self.conversation_id)
+                title = conv["title"] if conv else None
+            emit_event("answer.completed", {
+                "conversation_id": self.conversation_id,
+                "message_id": stored["id"],
+                "title": title,
+                "question": self.message,
+                "route": acc.route,
+                "content": stored["content"],
+                "sources": acc.sources,
+                "elapsed_ms": stored["metadata"].get("elapsed_ms"),
+                "source": self.source,
+            })
         finally:
             if not producer.done():
                 producer.cancel()
@@ -214,3 +234,48 @@ class ChatTurn:
         return await self.store.add_message(
             self.conversation_id, self.assistant_id, "assistant", content, self._metadata(acc, started, **flags)
         )
+
+
+class TurnError(Exception):
+    """A request that can't start a turn (maps to an HTTP status in the API layer)."""
+
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+        self.message = message
+
+
+async def prepare_turn(pipeline: ChatbotPipeline, store: ChatStore, *, conversation_id: str | None,
+                       message: str | None, regenerate: bool = False,
+                       attachments: list[dict] | None = None, source: str = "web",
+                       title: str | None = None) -> ChatTurn:
+    """Create/continue a conversation, store the user message and return a ready ChatTurn."""
+    conversation_id = conversation_id or f"c_{uuid.uuid4().hex[:20]}"
+    existing = await store.get_conversation(conversation_id)
+
+    if regenerate:
+        if not existing:
+            raise TurnError(404, "Conversation not found.")
+        checkpoint_id = await pipeline.regenerate_checkpoint(conversation_id)
+        if not checkpoint_id:
+            raise TurnError(409, "There is no answer to regenerate in this conversation.")
+        await store.delete_last_assistant(conversation_id)
+        return ChatTurn(pipeline, store, conversation_id=conversation_id, is_new=False, message=None,
+                        model_message=None, user_message_id=None, checkpoint_id=checkpoint_id, source=source)
+
+    if not message:
+        raise TurnError(422, "Message cannot be empty")
+    if not existing:
+        await store.create_conversation(conversation_id, title or fallback_title(message))
+
+    model_message = message
+    metadata: dict[str, Any] = {"source": source} if source != "web" else {}
+    if attachments:
+        names = ", ".join(a["name"] for a in attachments)
+        model_message += f"\n\n[The user attached these files, now in the knowledge base: {names}]"
+        metadata["attachments"] = attachments
+
+    user_id = f"msg_{uuid.uuid4().hex[:20]}"
+    await store.add_message(conversation_id, user_id, "user", message, metadata)
+    return ChatTurn(pipeline, store, conversation_id=conversation_id, is_new=not existing,
+                    message=message, model_message=model_message, user_message_id=user_id, source=source)

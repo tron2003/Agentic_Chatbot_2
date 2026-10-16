@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
+from agentic_chatbot.api.security import require_api_key
 from agentic_chatbot.components.llm_loader import describe_llm
 from agentic_chatbot.core.settings import get_settings
+from agentic_chatbot.integrations.registry import describe as describe_integrations
+from agentic_chatbot.integrations.registry import probe_agents
 from agentic_chatbot.mcp.mcp_manager import mcp_manager
 from agentic_chatbot.services.knowledge_base import get_knowledge_base
 from agentic_chatbot.services.store import get_store
@@ -66,4 +69,13 @@ async def meta():
         "knowledge_base": {"backend": kb.backend, "documents": len(await kb.document_names())},
         "persistence": get_store().backend,
         "limits": {"max_upload_mb": settings.max_upload_mb, "max_message_chars": settings.max_message_chars},
+        "integrations": describe_integrations(),
     }
+
+
+@router.get("/api/integrations", dependencies=[Depends(require_api_key)])
+async def integrations(refresh: bool = False):
+    """Status of optional integrations. ``?refresh=true`` re-checks external agents."""
+    if refresh:
+        await probe_agents()
+    return describe_integrations()

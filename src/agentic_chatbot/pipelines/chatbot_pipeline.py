@@ -16,10 +16,10 @@ The LangGraph pipeline and its streaming interface.
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 
@@ -86,10 +86,17 @@ class ChatbotPipeline:
                 return snapshot.config["configurable"]["checkpoint_id"]
         return None
 
-    async def stream(self, thread_id: str, message: str | None = None,
+    async def stream(self, thread_id: str, message: str | Sequence[BaseMessage] | None = None,
                      checkpoint_id: str | None = None) -> AsyncIterator[dict[str, Any]]:
+        """Run one turn. ``message`` is the new user text, a full message history
+        (used for stateless OpenAI-compatible calls), or None to resume a checkpoint."""
         config = self._config(thread_id, checkpoint_id)
-        graph_input = {"messages": [HumanMessage(content=message)]} if message is not None else None
+        if message is None:
+            graph_input = None
+        elif isinstance(message, str):
+            graph_input = {"messages": [HumanMessage(content=message)]}
+        else:
+            graph_input = {"messages": list(message)}
         think = ThinkFilter()
         answer: str | None = None
         route: str | None = None

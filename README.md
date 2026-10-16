@@ -20,6 +20,7 @@ Answers stream token by token. Research steps appear live as a "transit line" ti
 - **Document library**: drag in files or folders (PDF, Markdown, text, CSV, JSON, code), remove single documents, answers cite passages
 - **Long-memory summarisation** that folds old turns into a running summary
 - **Providers**: Claude, OpenAI, OpenRouter, Ollama, any OpenAI-compatible server, plus a `demo` model that needs no key
+- **Optional integrations** (off by default): delegate tasks to **OpenClaw**, Hermes or any OpenAI-compatible agent; let those apps use Junction as their model through an OpenAI-compatible `/v1` API; signed webhooks (incl. OpenClaw hooks, n8n, Zapier); Junction as an **MCP server** for Claude Desktop, Cursor and other MCP clients. See [docs/integrations.md](docs/integrations.md)
 - **Production basics**: optional API-key auth, per-client rate limiting, request IDs in every log line and error, JSON logs, `/health` + `/ready` probes, upload size and type limits, sandboxed file tools, graceful degradation when Postgres, MCP or a provider is missing
 - **UI**: layered parallax (pointer and scroll), light/dark/system theme, keyboard shortcuts (`Ctrl K` new chat, `/` focus, `Esc` stop), responsive down to phone width, reduced-motion support
 
@@ -60,6 +61,18 @@ docker compose up -d --build      # Postgres + app; UI and API on http://localho
 
 The image builds the React app and FastAPI serves it, so one container and one port cover both. For Ollama on the host machine, set `OLLAMA_BASE_URL=http://host.docker.internal:11434`.
 
+## Integrations (optional)
+
+Turn any of these on in `.env`. They're configured in `config/integrations.yaml`, and the full setup, including OpenClaw config snippets, is in [docs/integrations.md](docs/integrations.md).
+
+| Want to… | Set |
+|---|---|
+| Have Junction ask your OpenClaw assistant to do things (message people, set reminders) | `OPENCLAW_ENABLED=true`, `OPENCLAW_URL`, `OPENCLAW_GATEWAY_TOKEN` |
+| Hand tasks to Hermes Agent | `HERMES_ENABLED=true`, `HERMES_URL`, `HERMES_API_KEY` |
+| Use Junction as the model inside OpenClaw, Hermes, Open WebUI or any OpenAI SDK | `ENABLE_OPENAI_API=true`, `OPENAI_API_KEYS` |
+| Get OpenClaw (or n8n/Zapier) notified about answers and new documents | `OPENCLAW_HOOKS_ENABLED=true` / `WEBHOOK_ENABLED=true` |
+| Use Junction from Claude Desktop, Cursor or other MCP clients | `ENABLE_MCP_SERVER=true`, `MCP_SERVER_API_KEYS` |
+
 ## Deploy to Render
 
 `render.yaml` is a Blueprint for a Docker web service and a managed Postgres. In Render choose **New > Blueprint**, select the repo, and fill in `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (embeddings), `TAVILY_API_KEY` and `API_KEYS` when prompted. Set `API_KEYS` on any public deployment: the UI asks for the key once and keeps it in the browser.
@@ -91,6 +104,9 @@ Interactive docs at `/docs` (development) or `/api/docs` (production).
 | POST / GET | `/api/documents` | Upload files (multipart `files`), list library |
 | DELETE | `/api/documents/{id}` | Remove one document (and its vectors) |
 | GET | `/api/meta`, `/health`, `/ready` | Capabilities, liveness, readiness |
+| GET | `/api/integrations?refresh=` | Integration status (re-checks external agents) |
+| GET / POST | `/v1/models`, `/v1/chat/completions` | OpenAI-compatible API (when `ENABLE_OPENAI_API=true`) |
+| POST | `/mcp` | MCP server, streamable HTTP (when `ENABLE_MCP_SERVER=true`) |
 
 `POST /chat` and `/chat/stream` with `thread_id` still work for older scripts. The SSE event types are listed in [ARCHITECTURE.md](ARCHITECTURE.md#streaming-protocol).
 
@@ -99,12 +115,13 @@ Interactive docs at `/docs` (development) or `/api/docs` (production).
 ```
 backend_api.py                 ASGI entry point (uvicorn backend_api:app)
 run.py                         dev/prod launcher
-config/                        config.yaml (models, RAG, agent), mcp_servers.yaml
+config/                        config.yaml (models, RAG, agent), mcp_servers.yaml, integrations.yaml
 src/agentic_chatbot/
   api/                         FastAPI app, routes, middleware, auth + rate limit
   pipelines/chatbot_pipeline   LangGraph graph + streaming adapter
   nodes/                       router, chat, rag, agent, summarizer
   services/                    chat turn orchestration, conversation store, knowledge base
+  integrations/                optional: external agents, OpenAI-compatible API, webhooks, MCP server
   components/                  LLM, embeddings, vector store, checkpointer, demo model
   tools/                       web search, calculator, date/time, library search, read_pdf, MCP
   prompts/                     prompt builders (dates injected per request)
@@ -116,7 +133,7 @@ tests/                         pytest suite (runs on the demo model, no keys nee
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                         # 30 tests: SSE protocol, routes, regenerate, RAG, auth, limits
+pytest                         # 42 tests: SSE protocol, routes, regenerate, RAG, auth, limits, integrations (incl. a live MCP client)
 ruff check src tests
 cd frontend && npm test && npm run build   # 14 UI tests, typecheck, production build
 ```

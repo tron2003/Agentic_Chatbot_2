@@ -22,6 +22,7 @@ from langchain_core.tools import BaseTool
 from agentic_chatbot.components.llm_loader import get_llm
 from agentic_chatbot.core.settings import config_section
 from agentic_chatbot.entity.chat_state import Chatbot
+from agentic_chatbot.integrations.registry import tool_titles
 from agentic_chatbot.logging.logging_utils import ExecutionTimer
 from agentic_chatbot.nodes.events import emit, step
 from agentic_chatbot.prompts.agent_prompt import FINALIZE_INSTRUCTION, build_agent_prompt
@@ -91,6 +92,7 @@ async def agent_node(state: Chatbot, config: RunnableConfig) -> dict:
         kb_available = await get_knowledge_base().has_documents()
         tools = get_agent_tools(include_kb=kb_available)
         by_name = {t.name: t for t in tools}
+        titles = {**TOOL_TITLES, **tool_titles()}
         llm = get_llm("main").bind_tools(tools)
 
         history: list[BaseMessage] = [SystemMessage(content=build_agent_prompt(list(by_name), state.summary))]
@@ -118,7 +120,7 @@ async def agent_node(state: Chatbot, config: RunnableConfig) -> dict:
 
             logger.info("Agent iteration %d: %d tool call(s)", iteration + 1, len(response.tool_calls))
             for call in response.tool_calls:
-                step("tool", TOOL_TITLES.get(call["name"], f"Using {call['name']}"), _describe_args(call.get("args") or {}),
+                step("tool", titles.get(call["name"], f"Using {call['name']}"), _describe_args(call.get("args") or {}),
                      step_id=call["id"], status="running", tool=call["name"])
 
             results = await asyncio.gather(*[_run_tool(by_name, c, timeout, max_chars) for c in response.tool_calls])
@@ -130,7 +132,7 @@ async def agent_node(state: Chatbot, config: RunnableConfig) -> dict:
                 sources.extend(fresh)
                 preview = result.content if isinstance(result.content, str) else message_text(result.content)
                 summary = f"{len(found)} result{'s' if len(found) != 1 else ''}" if found else preview[:280]
-                step("tool", TOOL_TITLES.get(call["name"], f"Used {call['name']}"), _describe_args(call.get("args") or {}),
+                step("tool", titles.get(call["name"], f"Used {call['name']}"), _describe_args(call.get("args") or {}),
                      step_id=call["id"], status="error" if result.status == "error" else "done",
                      tool=call["name"], result=summary)
             if sources:

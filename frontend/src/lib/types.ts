@@ -96,6 +96,15 @@ export interface Meta {
   knowledge_base: { backend: string; documents: number };
   persistence: string;
   limits: { max_upload_mb: number; max_message_chars: number };
+  integrations?: { items: Integration[]; error: string | null };
+}
+
+export interface Integration {
+  name: string;
+  label: string;
+  kind: 'agent' | 'inbound' | 'webhook';
+  status: string;
+  detail: string;
 }
 
 export type StreamEvent =

@@ -26,6 +26,7 @@ os.environ.update(
         "RATE_LIMIT_PER_MINUTE": "1000",
         "DEMO_TOKEN_DELAY": "0",
         "LOG_LEVEL": "WARNING",
+        "INTEGRATIONS_CONFIG_PATH": str(ROOT / "tests" / "_no_integrations.yaml"),
     }
 )
 
@@ -37,10 +38,12 @@ def _fresh_state(tmp_path, monkeypatch):
     from agentic_chatbot.components.llm_loader import reset_llm_cache
     from agentic_chatbot.components.vector_store_loader import reset_vector_store
     from agentic_chatbot.core.settings import reset_caches
+    from agentic_chatbot.integrations.config import reset_integrations
     from agentic_chatbot.services import knowledge_base, store
 
     monkeypatch.setenv("WORKSPACE_DIR", str(tmp_path / "workspace"))
     reset_caches()
+    reset_integrations()
     reset_llm_cache()
     reset_vector_store()
     limiter.reset()
@@ -48,6 +51,7 @@ def _fresh_state(tmp_path, monkeypatch):
     knowledge_base.get_knowledge_base()._invalidate()
     yield
     reset_caches()
+    reset_integrations()
 
 
 @pytest.fixture

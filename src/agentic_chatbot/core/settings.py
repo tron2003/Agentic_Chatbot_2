@@ -69,11 +69,12 @@ class Settings(BaseSettings):
 
     environment: str = Field("development", description="development | production")
     app_name: str = "Junction"
-    app_version: str = "2.0.0"
+    app_version: str = "2.1.0"
 
     # Paths
     config_path: Path = PROJECT_ROOT / "config" / "config.yaml"
     mcp_config_path: Path = PROJECT_ROOT / "config" / "mcp_servers.yaml"
+    integrations_config_path: Path = PROJECT_ROOT / "config" / "integrations.yaml"
     workspace_dir: Path = PROJECT_ROOT / "workspace"
     frontend_dist: Path = PROJECT_ROOT / "frontend" / "dist"
 

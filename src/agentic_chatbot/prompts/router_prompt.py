@@ -20,7 +20,7 @@ rag
 agent
 - Anything that depends on current or changing information: news, prices, releases, sports, weather, "latest", "today", "this week".
 - Tasks that need a tool: arithmetic, date maths, looking things up on the web, reading files, GitHub lookups.{tools_line}
-- Multi-step research or verification across sources.
+- Multi-step research or verification across sources.{agents_line}
 
 Rules
 -----
@@ -33,7 +33,7 @@ Rules
 Return the route and a one-sentence reason."""
 
 
-def build_router_prompt(documents: list[str], tools: list[str]) -> str:
+def build_router_prompt(documents: list[str], tools: list[str], agents: list[tuple[str, str]] | None = None) -> str:
     today = datetime.now().strftime("%A, %d %B %Y")
     if documents:
         listed = ", ".join(documents[:25])
@@ -42,4 +42,7 @@ def build_router_prompt(documents: list[str], tools: list[str]) -> str:
     else:
         kb_line = "\n- The knowledge base is currently EMPTY."
     tools_line = f"\n- Available tools: {', '.join(tools)}." if tools else ""
-    return ROUTER_TEMPLATE.format(today=today, kb_line=kb_line, tools_line=tools_line)
+    agents_line = "".join(
+        f"\n- Anything the user asks the external agent {label} to do. {label}: {desc}" for label, desc in (agents or [])
+    )
+    return ROUTER_TEMPLATE.format(today=today, kb_line=kb_line, tools_line=tools_line, agents_line=agents_line)

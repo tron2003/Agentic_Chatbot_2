@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -22,6 +22,11 @@ from agentic_chatbot.core.context import get_request_id
 from agentic_chatbot.core.logging import configure_logging
 from agentic_chatbot.core.settings import get_settings
 from agentic_chatbot.exception.exception import CustomException
+from agentic_chatbot.integrations import openai_compat
+from agentic_chatbot.integrations.config import get_integrations
+from agentic_chatbot.integrations.mcp_server import build_mcp_server, mcp_routes
+from agentic_chatbot.integrations.registry import probe_agents
+from agentic_chatbot.integrations.webhooks import dispatcher
 from agentic_chatbot.mcp.mcp_manager import mcp_manager
 from agentic_chatbot.pipelines.chatbot_pipeline import ChatbotPipeline
 from agentic_chatbot.services.store import init_store
@@ -52,13 +57,36 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Started without a usable model: %s", llm["error"])
 
+    _warn_open_integrations()
     try:
-        yield
+        async with AsyncExitStack() as stack:
+            mcp_server = getattr(app.state, "mcp_server", None)
+            if mcp_server is not None:
+                await stack.enter_async_context(mcp_server.session_manager.run())
+                logger.info("MCP server listening at /mcp")
+            probe = asyncio.create_task(probe_agents())  # don't block startup on slow agents
+            try:
+                yield
+            finally:
+                probe.cancel()
+                app.state.pipeline = None
+                await dispatcher.drain()
     finally:
-        app.state.pipeline = None
         await memory.close()
         await store.close()
         logger.info("Shut down cleanly")
+
+
+def _warn_open_integrations() -> None:
+    cfg = get_integrations()
+    if cfg.error:
+        logger.error(cfg.error)
+    if cfg.openai_api.enabled and not cfg.openai_api.key_set():
+        logger.warning("OpenAI-compatible API is on without keys; set OPENAI_API_KEYS or API_KEYS before exposing it")
+    if cfg.mcp_server.enabled and not cfg.mcp_server.key_set():
+        logger.warning("MCP server is on without keys; set MCP_SERVER_API_KEYS or API_KEYS before exposing it")
+    for agent in cfg.enabled_agents:
+        logger.info("External agent enabled: %s (%s) as tool %s", agent.display, agent.base_url, agent.tool_name)
 
 
 def _error(status_code: int, code: str, message: str, details: object | None = None) -> JSONResponse:
@@ -128,6 +156,14 @@ def create_app() -> FastAPI:
     app.include_router(history.router)
     app.include_router(documents.router)
 
+    integrations = get_integrations()
+    if integrations.openai_api.enabled:
+        app.include_router(openai_compat.router)
+    if integrations.mcp_server.enabled:
+        server = build_mcp_server(lambda: getattr(app.state, "pipeline", None), integrations.mcp_server)
+        app.state.mcp_server = server
+        app.router.routes.extend(mcp_routes(server, integrations.mcp_server))
+
     _mount_frontend(app, settings.frontend_dist, settings.serve_frontend)
     return app
 
@@ -146,7 +182,7 @@ def _mount_frontend(app: FastAPI, dist: Path, enabled: bool) -> None:
 
     @app.get("/{path:path}", include_in_schema=False)
     async def spa(path: str):
-        if path.startswith(("api/", "docs", "openapi.json")):
+        if path.startswith(("api/", "v1/", "mcp", "docs", "openapi.json")):
             raise HTTPException(404, "Not found.")
         candidate = (dist / path).resolve()
         if path and candidate.is_file() and candidate.is_relative_to(dist.resolve()):

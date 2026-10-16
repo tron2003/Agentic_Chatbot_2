@@ -13,6 +13,7 @@ from agentic_chatbot.core.settings import config_section
 from agentic_chatbot.entity.chat_state import Chatbot
 from agentic_chatbot.entity.router import Router
 from agentic_chatbot.exception.exception import LLMConfigError
+from agentic_chatbot.integrations.registry import agent_capabilities
 from agentic_chatbot.logging.logging_utils import ExecutionTimer
 from agentic_chatbot.nodes.events import emit, step
 from agentic_chatbot.prompts.router_prompt import build_router_prompt
@@ -59,7 +60,7 @@ async def router_node(state: Chatbot, config: RunnableConfig) -> dict:
         try:
             structured = get_llm("router").with_structured_output(Router)
             decision = await structured.ainvoke(
-                [SystemMessage(content=build_router_prompt(documents, tool_names)), HumanMessage(content=prompt)],
+                [SystemMessage(content=build_router_prompt(documents, tool_names, agent_capabilities())), HumanMessage(content=prompt)],
                 config={**config, "tags": [*config.get("tags", []), "nostream"]},
             )
             if not isinstance(decision, Router):

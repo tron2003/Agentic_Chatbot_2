@@ -1,0 +1,80 @@
+# Optional integrations. Everything here is OFF by default; turn on what you use.
+# Values can reference .env with ${VAR} or ${VAR:-default}. Full guide: docs/integrations.md
+#
+#   1. openai_api  – other agent apps (OpenClaw, Hermes Agent, Open WebUI, LibreChat…)
+#                    use Junction as their model via an OpenAI-compatible endpoint
+#   2. agents      – Junction's Research route delegates tasks to external agents
+#                    (OpenClaw, Hermes, or anything with /v1/chat/completions)
+#   3. webhooks    – Junction notifies other systems (OpenClaw hooks, n8n, Zapier…)
+#   4. mcp_server  – Junction's tools exposed over MCP (Claude Desktop, Hermes, Cursor…)
+
+# ── 1. Junction as a model for other apps ───────────────────────────────────
+openai_api:
+  enabled: ${ENABLE_OPENAI_API:-false}
+  model_name: junction            # the model id clients pick from /v1/models
+  api_keys: ${OPENAI_API_KEYS:-}  # keys for these clients; falls back to API_KEYS when empty
+  append_sources: true            # add a "Sources" list to answers (chat apps can't show our UI)
+  persist_conversations: true     # requests with a `user` id are saved and appear in the sidebar
+
+# ── 2. External agents Junction can delegate to ─────────────────────────────
+# Each enabled agent becomes a tool named ask_<name> for the Research route.
+# Any agent with an OpenAI-compatible chat endpoint works.
+agents:
+  openclaw:
+    enabled: ${OPENCLAW_ENABLED:-false}
+    label: OpenClaw
+    # Gateway URL + /v1. Turn the endpoint on in OpenClaw with
+    #   gateway.http.endpoints.chatCompletions.enabled: true
+    base_url: ${OPENCLAW_URL:-http://127.0.0.1:18789}/v1
+    api_key: ${OPENCLAW_GATEWAY_TOKEN}
+    model: ${OPENCLAW_AGENT:-openclaw/default}   # or openclaw/<agentId>
+    session: per_conversation       # each Junction conversation keeps its own OpenClaw session
+    timeout_seconds: 180
+    description: >-
+      The user's personal OpenClaw assistant. It can send and read messages on the user's
+      chat apps (WhatsApp, Telegram, Slack, Discord), set reminders and scheduled jobs, and
+      run tasks on the user's own computer. Use it only when the user asks for one of these
+      actions, and pass the full instruction including names, times and message text.
+
+  hermes:
+    enabled: ${HERMES_ENABLED:-false}
+    label: Hermes
+    # Hermes Agent's API server. Turn it on in ~/.hermes/.env with
+    #   API_SERVER_ENABLED=true and API_SERVER_KEY=<key>, then run `hermes gateway`
+    base_url: ${HERMES_URL:-http://127.0.0.1:8642}/v1
+    api_key: ${HERMES_API_KEY}
+    model: ${HERMES_MODEL:-hermes-agent}
+    session: per_conversation
+    timeout_seconds: 180
+    description: >-
+      The user's Hermes agent, which has its own skills, memory and tools. Use it when the
+      user asks to hand a task to Hermes.
+
+# ── 3. Webhooks ─────────────────────────────────────────────────────────────
+# Events: conversation.created, answer.completed, document.ingested, document.deleted, or "*"
+webhooks:
+  # Tell your OpenClaw assistant when something happens (it can then message you).
+  # Enable hooks in OpenClaw: hooks.enabled: true, hooks.token: "<token>"
+  - name: openclaw-notify
+    enabled: ${OPENCLAW_HOOKS_ENABLED:-false}
+    format: openclaw_agent
+    url: ${OPENCLAW_URL:-http://127.0.0.1:18789}/hooks/agent
+    token: ${OPENCLAW_HOOKS_TOKEN}
+    events: [document.ingested]
+    deliver: true                  # let OpenClaw announce it on your default channel
+    # channel: whatsapp            # optional: deliver to a specific channel…
+    # to: "+911234567890"          # …and recipient
+
+  # Generic JSON webhook (n8n, Zapier, Make, your own service), signed with HMAC-SHA256.
+  - name: automation
+    enabled: ${WEBHOOK_ENABLED:-false}
+    format: json
+    url: ${WEBHOOK_URL:-}
+    secret: ${WEBHOOK_SECRET:-}
+    events: ["*"]
+
+# ── 4. Junction as an MCP server ────────────────────────────────────────────
+mcp_server:
+  enabled: ${ENABLE_MCP_SERVER:-false}
+  api_keys: ${MCP_SERVER_API_KEYS:-}   # falls back to API_KEYS when empty
+  allowed_hosts: []                    # e.g. ["chat.example.com"]; empty = no Host check

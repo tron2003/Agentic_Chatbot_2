@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.1.0
+
+### Added: optional integrations (all off by default, `config/integrations.yaml`)
+- **External agents**: each configured OpenAI-compatible agent becomes an `ask_<name>` tool for the Research route, with ready presets for **OpenClaw** (gateway `/v1/chat/completions`, one OpenClaw session per Junction conversation) and **Hermes Agent**. The router and timeline know about them, and failures show as a red timeline stop instead of breaking the answer.
+- **OpenAI-compatible API** (`/v1/models`, `/v1/chat/completions`, JSON and streaming) so OpenClaw, Hermes, Open WebUI, LibreChat or any OpenAI SDK can use Junction as their model. Stateless by default; with `user`, conversations are kept and appear in the sidebar. Separate API keys.
+- **Webhooks**: `conversation.created`, `answer.completed`, `document.ingested`, `document.deleted`. Signed JSON (HMAC-SHA256) for n8n/Zapier/Make, plus an OpenClaw `/hooks/agent` format, delivered in the background with retries.
+- **MCP server** at `/mcp` (stateless streamable HTTP, key auth) with `ask`, `search_documents` and `list_documents` tools.
+- Sidebar "Connections" status, `GET /api/integrations`, startup reachability probes, and an invalid integrations file reported without taking the app down.
+- 12 integration tests, including the official MCP client against a live server and the OpenAI SDK format.
+
+### Changed
+- Turn preparation moved into `services/chat_service.prepare_turn`, shared by the web UI, the OpenAI-compatible API and the MCP server.
+
 ## 2.0.0
 
 ### Fixed

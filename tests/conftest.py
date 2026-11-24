@@ -37,6 +37,7 @@ def _fresh_state(tmp_path, monkeypatch):
     from agentic_chatbot.api.security import limiter
     from agentic_chatbot.components.llm_loader import reset_llm_cache
     from agentic_chatbot.components.vector_store_loader import reset_vector_store
+    from agentic_chatbot.core.db import reset_postgres_check
     from agentic_chatbot.core.settings import reset_caches
     from agentic_chatbot.integrations.config import reset_integrations
     from agentic_chatbot.services import knowledge_base, store
@@ -46,6 +47,7 @@ def _fresh_state(tmp_path, monkeypatch):
     reset_integrations()
     reset_llm_cache()
     reset_vector_store()
+    reset_postgres_check()
     limiter.reset()
     store.set_store(None)
     knowledge_base.get_knowledge_base()._invalidate()

@@ -128,7 +128,7 @@ export function LibraryPanel({ open, onClose }: { open: boolean; onClose: () => 
               </button>
               {meta && !persistent && (
                 <p className="mt-2 text-[12.5px] leading-snug text-faint">
-                  No database is configured, so the library is kept in memory and clears when the server restarts.
+                  The library isn't connected to a database right now, so documents are kept in memory and clear when the server restarts.
                 </p>
               )}
             </div>

@@ -3,6 +3,7 @@ import { Check, Library, Monitor, Moon, Pencil, Plus, Search, Sun, Trash2, X } f
 import type { ThemeChoice } from '@/hooks/useTheme';
 import { useChat } from '@/lib/chat-store';
 import type { Conversation, Integration } from '@/lib/types';
+import { TYPING_SPEEDS } from '@/lib/typing';
 import { cn, dateGroup, type DateGroup } from '@/lib/utils';
 
 const GROUP_ORDER: DateGroup[] = ['Today', 'Yesterday', 'Previous 7 days', 'Previous 30 days', 'Older'];
@@ -123,6 +124,34 @@ function Connections() {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+function TypingSpeedControl() {
+  const { typingSpeed, setTypingSpeed } = useChat();
+  return (
+    <section className="px-3 pb-1 pt-1">
+      <h2 id="typing-speed-label" className="pb-1 text-[12.5px] font-semibold text-faint">
+        Typing speed
+      </h2>
+      <div role="group" aria-labelledby="typing-speed-label" className="flex rounded-lg border border-line bg-bg/40 p-0.5">
+        {TYPING_SPEEDS.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setTypingSpeed(s.id)}
+            aria-pressed={typingSpeed === s.id}
+            title={s.id === 'instant' ? 'Show answers as fast as they arrive' : `About ${s.cps} characters per second`}
+            className={cn(
+              'flex-1 rounded-md py-1 text-[12.5px]',
+              typingSpeed === s.id ? 'bg-raised font-semibold text-ink shadow-lift' : 'text-muted hover:text-ink',
+            )}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
     </section>
   );
 }
@@ -248,6 +277,7 @@ export function Sidebar({
             <span className="ml-auto text-[12.5px] text-faint">{documents.length || ''}</span>
           </button>
           <Connections />
+          <TypingSpeedControl />
           <div className="flex items-center gap-2 px-3 py-1.5">
             <span
               className={cn('size-2 shrink-0 rounded-full', serverDown ? 'bg-danger' : meta?.llm_ready ? 'bg-route-agent' : 'bg-route-docs')}

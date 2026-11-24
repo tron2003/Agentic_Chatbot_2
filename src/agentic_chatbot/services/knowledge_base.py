@@ -17,6 +17,7 @@ from typing import Any
 
 from langchain_core.documents import Document
 
+from agentic_chatbot.components.embedding_loader import embedding_provider
 from agentic_chatbot.components.reranker import get_reranker
 from agentic_chatbot.components.vector_store_loader import get_vector_store, vector_backend
 from agentic_chatbot.core.settings import config_section
@@ -26,6 +27,23 @@ from agentic_chatbot.services.store import get_store
 from agentic_chatbot.utils.document_loader import DocumentLoader
 
 logger = logging.getLogger(__name__)
+
+
+def _embedding_hint(exc: Exception, fallback: str) -> str:
+    """Turn the most common embedding failures into a message that says what to do."""
+    text = str(exc).lower()
+    provider = embedding_provider()
+    if provider == "ollama":
+        block = config_section("embeddings").get("ollama") or {}
+        model = block.get("model", "qwen3-embedding:4b")
+        base_url = block.get("base_url", "http://127.0.0.1:11434")
+        if "not found" in text or "status code: 404" in text or "try pulling" in text:
+            return f"The embedding model '{model}' isn't installed in Ollama. Run: ollama pull {model}"
+        if any(s in text for s in ("failed to connect", "connection refused", "connecterror", "timed out")):
+            return f"Couldn't reach Ollama at {base_url}. Start Ollama (or fix OLLAMA_BASE_URL) and try again."
+    if provider == "openai" and ("401" in text or "api key" in text):
+        return "OpenAI rejected the embeddings request. Check OPENAI_API_KEY in .env."
+    return fallback
 
 
 class KnowledgeBase:
@@ -70,16 +88,18 @@ class KnowledgeBase:
             chunk.metadata.update({"doc_id": doc_id, "source_name": display_name, "chunk": i})
 
         try:
-            store = get_vector_store()
+            # Opening the store can touch the database: keep it off the event loop.
+            store = await asyncio.to_thread(get_vector_store)
             await asyncio.to_thread(store.add_documents, chunks, ids=ids)
         except VectorStoreException:
             raise
         except Exception as exc:
             raise VectorStoreException(
                 f"Embedding/indexing failed for {display_name}: {exc}",
-                public_message=(
+                public_message=_embedding_hint(
+                    exc,
                     "Couldn't index the file. Check that the embedding model is reachable "
-                    "(EMBEDDING_PROVIDER / OLLAMA_BASE_URL)."
+                    "(EMBEDDING_PROVIDER / OLLAMA_BASE_URL).",
                 ),
             ) from exc
 
@@ -104,7 +124,8 @@ class KnowledgeBase:
         ids = list(record.get("chunk_ids") or [])
         if ids:
             try:
-                await asyncio.to_thread(get_vector_store().delete, ids)
+                store = await asyncio.to_thread(get_vector_store)
+                await asyncio.to_thread(store.delete, ids)
             except Exception as exc:
                 logger.warning("Vector delete failed for %s: %s", doc_id, exc)
         await get_store().delete_document(doc_id)
@@ -122,7 +143,7 @@ class KnowledgeBase:
     async def search(self, query: str) -> list[Document]:
         cfg = config_section("rag")
         k = int(cfg.get("k", 6))
-        store = get_vector_store()
+        store = await asyncio.to_thread(get_vector_store)
         try:
             docs = await asyncio.to_thread(
                 store.max_marginal_relevance_search,
@@ -132,7 +153,10 @@ class KnowledgeBase:
                 lambda_mult=float(cfg.get("lambda_mult", 0.6)),
             )
         except Exception as exc:
-            raise VectorStoreException(f"Similarity search failed: {exc}") from exc
+            raise VectorStoreException(
+                f"Similarity search failed: {exc}",
+                public_message=_embedding_hint(exc, "Searching your documents failed. Check the embedding model."),
+            ) from exc
 
         if cfg.get("rerank") and docs:
             reranker = get_reranker(str(cfg.get("rerank_model")))

@@ -19,6 +19,7 @@ from agentic_chatbot.api.routes import chat, documents, history, system
 from agentic_chatbot.components.llm_loader import describe_llm
 from agentic_chatbot.components.memory import MemoryLoader
 from agentic_chatbot.core.context import get_request_id
+from agentic_chatbot.core.db import check_postgres
 from agentic_chatbot.core.logging import configure_logging
 from agentic_chatbot.core.settings import get_settings
 from agentic_chatbot.exception.exception import CustomException
@@ -44,6 +45,8 @@ async def lifespan(app: FastAPI):
     settings.uploads_dir.mkdir(parents=True, exist_ok=True)
 
     store = await init_store()
+    if settings.effective_vector_db_uri:  # warm the cached probe so /api/meta never waits on it
+        await asyncio.to_thread(check_postgres, settings.effective_vector_db_uri)
     memory = MemoryLoader()
     checkpointer = await memory.load_memory()
     await mcp_manager.initialize()

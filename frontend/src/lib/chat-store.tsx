@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, ApiError, setApiKey as persistApiKey, streamChat, type ChatBody } from './api';
-import type { Attachment, Conversation, DocumentInfo, Meta, Step, UIMessage, UploadResponse } from './types';
+import type { Attachment, Conversation, DocumentInfo, Meta, Step, StoredMessage, UIMessage, UploadResponse } from './types';
+import { charsPerSecond, readTypingSpeed, saveTypingSpeed, Typewriter, type TypingSpeed } from './typing';
 import { fromStored, uid } from './utils';
 
 export interface Toast {
@@ -17,15 +18,18 @@ interface ChatState {
   activeId: string | null;
   messages: UIMessage[];
   loadingConversation: boolean;
+  /** True while an answer is generating or still being typed out. */
   streaming: boolean;
   documents: DocumentInfo[];
   toasts: Toast[];
   needsApiKey: boolean;
+  typingSpeed: TypingSpeed;
 }
 
 interface ChatActions {
   send: (text: string, attachments?: Attachment[]) => Promise<void>;
   regenerate: () => Promise<void>;
+  /** Stops generation; if the answer is already complete, shows the rest of it at once. */
   stop: () => void;
   newChat: () => void;
   open: (id: string) => Promise<void>;
@@ -41,6 +45,7 @@ interface ChatActions {
   dismissToast: (id: string) => void;
   submitApiKey: (key: string) => Promise<void>;
   refreshMeta: () => Promise<void>;
+  setTypingSpeed: (speed: TypingSpeed) => void;
 }
 
 const Ctx = createContext<(ChatState & ChatActions) | null>(null);
@@ -68,10 +73,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [needsApiKey, setNeedsApiKey] = useState(false);
+  const [typingSpeed, setTypingSpeedState] = useState<TypingSpeed>(readTypingSpeed);
 
   const abortRef = useRef<AbortController | null>(null);
+  const typerRef = useRef<Typewriter | null>(null);
   const activeRef = useRef<string | null>(null);
   activeRef.current = activeId;
+  // Read by the typewriter every frame, so a new speed applies to the answer being typed.
+  const speedRef = useRef<TypingSpeed>(typingSpeed);
+  speedRef.current = typingSpeed;
+
+  const setTypingSpeed = useCallback((speed: TypingSpeed) => {
+    setTypingSpeedState(speed);
+    saveTypingSpeed(speed);
+  }, []);
 
   // ── toasts ────────────────────────────────────────────────────────────────
   const dismissToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), []);
@@ -134,6 +149,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const open = useCallback(
     async (id: string) => {
       if (abortRef.current) abortRef.current.abort();
+      typerRef.current?.dispose();
       setActiveId(id);
       writeHash(id);
       setLoadingConversation(true);
@@ -190,15 +206,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       abortRef.current = controller;
       setStreaming(true);
       let assistantId = assistantTempId;
-      let pending = '';
-      let frame = 0;
-      const flush = () => {
-        frame = 0;
-        if (!pending) return;
-        const text = pending;
-        pending = '';
-        patch(assistantId, (m) => ({ ...m, content: m.content + text }));
-      };
+      let finalMessage: StoredMessage | null = null;
+
+      // Tokens are queued and typed out at the reader's chosen speed (see lib/typing.ts).
+      typerRef.current?.dispose();
+      const typer = new Typewriter(
+        (text) => patch(assistantId, (m) => ({ ...m, content: m.content + text })),
+        () => charsPerSecond(speedRef.current),
+      );
+      typerRef.current = typer;
 
       try {
         for await (const ev of streamChat(body, controller.signal)) {
@@ -242,13 +258,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               });
               break;
             case 'token':
-              pending += ev.text;
-              if (!frame) frame = requestAnimationFrame(flush);
+              typer.push(ev.text);
               break;
             case 'draft_reset':
-              pending = '';
-              if (frame) cancelAnimationFrame(frame);
-              frame = 0;
+              typer.reset();
               patch(assistantId, (m) => ({ ...m, content: '' }));
               break;
             case 'sources':
@@ -257,33 +270,44 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             case 'title':
               setConversations((cs) => cs.map((c) => (c.id === ev.conversation_id ? { ...c, title: ev.title } : c)));
               break;
-            case 'done': {
-              if (frame) cancelAnimationFrame(frame);
-              pending = '';
-              const stored = fromStored(ev.message);
-              patch(assistantId, (m) => ({ ...stored, steps: stored.steps.length ? stored.steps : m.steps }));
-              const convId = ev.message.conversation_id;
-              setConversations((cs) => {
-                const c = cs.find((x) => x.id === convId);
-                if (!c) return cs;
-                const updated = { ...c, updated_at: new Date().toISOString(), message_count: c.message_count + 1 };
-                return [updated, ...cs.filter((x) => x.id !== convId)];
-              });
+            case 'done':
+              // Applied once the typing has caught up, so the answer doesn't jump to the end.
+              finalMessage = ev.message;
               break;
-            }
             case 'error':
-              flush();
+              typer.finish();
               patch(assistantId, (m) => ({ ...m, status: 'error', error: ev.message }));
               break;
           }
         }
-        flush();
-        // Stream ended without "done" (stopped or dropped).
-        patch(assistantId, (m) =>
-          m.status === 'streaming' ? { ...m, status: controller.signal.aborted ? 'stopped' : 'error', error: controller.signal.aborted ? undefined : 'The answer was cut off.' } : m,
-        );
+
+        // The server is finished; let the typing catch up (Stop skips to the end).
+        await typer.drain();
+
+        if (finalMessage) {
+          const stored = fromStored(finalMessage);
+          patch(assistantId, (m) => ({ ...stored, steps: stored.steps.length ? stored.steps : m.steps }));
+          const convId = finalMessage.conversation_id;
+          setConversations((cs) => {
+            const c = cs.find((x) => x.id === convId);
+            if (!c) return cs;
+            const updated = { ...c, updated_at: new Date().toISOString(), message_count: c.message_count + 1 };
+            return [updated, ...cs.filter((x) => x.id !== convId)];
+          });
+        } else {
+          // Stream ended without "done" (stopped or dropped).
+          patch(assistantId, (m) =>
+            m.status === 'streaming'
+              ? {
+                  ...m,
+                  status: controller.signal.aborted ? 'stopped' : 'error',
+                  error: controller.signal.aborted ? undefined : 'The answer was cut off.',
+                }
+              : m,
+          );
+        }
       } catch (err) {
-        flush();
+        typer.finish();
         if (err instanceof ApiError && err.status === 401) {
           setNeedsApiKey(true);
           setMessages((ms) => ms.filter((m) => m.id !== assistantId));
@@ -293,6 +317,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           if (err instanceof ApiError && err.code === 'NETWORK') setServerDown(true);
         }
       } finally {
+        typer.dispose();
+        if (typerRef.current === typer) typerRef.current = null;
         if (abortRef.current === controller) abortRef.current = null;
         setStreaming(false);
       }
@@ -332,10 +358,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
+    typerRef.current?.finish();
   }, []);
 
   const newChat = useCallback(() => {
     abortRef.current?.abort();
+    typerRef.current?.dispose();
     setActiveId(null);
     setMessages([]);
     writeHash(null);
@@ -448,15 +476,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       meta, serverDown, conversations, conversationsLoaded, activeId, messages, loadingConversation, streaming,
-      documents, toasts, needsApiKey,
+      documents, toasts, needsApiKey, typingSpeed,
       send, regenerate, stop, newChat, open, rename, remove, searchConversations, refreshDocuments, upload,
       removeDocument, clearDocuments, exportConversation, toast, dismissToast, submitApiKey, refreshMeta,
+      setTypingSpeed,
     }),
     [
       meta, serverDown, conversations, conversationsLoaded, activeId, messages, loadingConversation, streaming,
-      documents, toasts, needsApiKey, send, regenerate, stop, newChat, open, rename, remove, searchConversations,
-      refreshDocuments, upload, removeDocument, clearDocuments, exportConversation, toast, dismissToast, submitApiKey,
-      refreshMeta,
+      documents, toasts, needsApiKey, typingSpeed, send, regenerate, stop, newChat, open, rename, remove,
+      searchConversations, refreshDocuments, upload, removeDocument, clearDocuments, exportConversation, toast,
+      dismissToast, submitApiKey, refreshMeta, setTypingSpeed,
     ],
   );
 

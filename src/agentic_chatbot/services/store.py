@@ -21,6 +21,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
+from agentic_chatbot.core.db import check_postgres, unreachable_hint
 from agentic_chatbot.core.settings import get_settings, pg_conninfo
 from agentic_chatbot.exception.exception import DatabaseException
 
@@ -236,7 +237,7 @@ class PostgresStore(ChatStore):
             self._pool = AsyncConnectionPool(
                 conninfo=self._uri,
                 max_size=self._pool_size,
-                kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+                kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row, "connect_timeout": 5},
                 open=False,
             )
             await self._pool.open(wait=True, timeout=15)
@@ -245,6 +246,10 @@ class PostgresStore(ChatStore):
                     await conn.execute(stmt)
             logger.info("Postgres chat store ready")
         except Exception as exc:
+            # Stop the pool's background reconnect workers instead of leaking them.
+            if self._pool is not None:
+                await self._pool.close(timeout=1)
+                self._pool = None
             raise DatabaseException(f"Could not initialise chat store: {exc}") from exc
 
     async def close(self) -> None:
@@ -397,13 +402,19 @@ async def init_store() -> ChatStore:
     global _store
     settings = get_settings()
     if settings.db_uri:
+        # One quick, shared reachability probe (cached) instead of a 15 s pool timeout per component.
+        reason = await asyncio.to_thread(check_postgres, settings.db_uri)
+        if reason and not settings.is_production:
+            logger.warning("%s Chat history is kept in memory for now.", unreachable_hint(settings.db_uri, reason))
+            _store = MemoryStore()
+            return _store
         store: ChatStore = PostgresStore(settings.db_uri)
         try:
             await store.init()
-        except DatabaseException:
+        except DatabaseException as exc:
             if settings.is_production:
                 raise
-            logger.exception("Postgres chat store unavailable; using in-memory store")
+            logger.error("Postgres chat store unavailable (%s); using in-memory store", exc)
             store = MemoryStore()
     else:
         logger.warning("DB_URI not set: chat history is kept in memory and resets on restart")

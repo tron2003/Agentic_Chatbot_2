@@ -1,214 +1,169 @@
-export const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001';
+import type { Conversation, DocumentInfo, Meta, StoredMessage, StreamEvent, UploadResponse } from './types';
 
-export interface ChatMessage {
-  id: string;
-  content: string;
-  role: 'user' | 'assistant';
-  timestamp: Date;
-}
+/** Empty in production (same origin as the API); set VITE_API_URL to call a separate host. */
+export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 
-export interface ChatRequest {
-  message: string;
-  thread_id: string;
-}
+const KEY_STORAGE = 'junction.apiKey';
 
-export interface ChatResponse {
-  response: string;
-}
-
-export async function sendMessage(request: ChatRequest): Promise<string> {
-  const response = await fetch(`${API_URL}/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to send message' }));
-    throw new Error(error.detail || 'Failed to send message');
+export function getApiKey(): string | null {
+  try {
+    return localStorage.getItem(KEY_STORAGE);
+  } catch {
+    return null;
   }
-
-  const data: ChatResponse = await response.json();
-  return data.response;
 }
 
-export interface ReasoningStep {
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'final_answer';
-  content: string;
-  timestamp: string;
+export function setApiKey(key: string | null) {
+  try {
+    if (key) localStorage.setItem(KEY_STORAGE, key);
+    else localStorage.removeItem(KEY_STORAGE);
+  } catch {
+    /* storage unavailable */
+  }
 }
 
-export interface StreamEvent {
-  type: 'reasoning_step' | 'response' | 'error' | 'complete';
-  data?: any;
+export class ApiError extends Error {
+  status: number;
+  code: string;
+  requestId?: string;
+  constructor(message: string, status: number, code = 'ERROR', requestId?: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.requestId = requestId;
+  }
+}
+
+function headers(extra: Record<string, string> = {}): Record<string, string> {
+  const h: Record<string, string> = { ...extra };
+  const key = getApiKey();
+  if (key) h.Authorization = `Bearer ${key}`;
+  return h;
+}
+
+async function toError(res: Response): Promise<ApiError> {
+  let message = `Request failed (${res.status})`;
+  let code = `HTTP_${res.status}`;
+  let requestId = res.headers.get('x-request-id') ?? undefined;
+  try {
+    const body = await res.json();
+    message = body?.error?.message ?? body?.detail ?? message;
+    code = body?.error?.code ?? code;
+    requestId = body?.error?.request_id ?? requestId;
+  } catch {
+    /* non-JSON error body */
+  }
+  if (res.status === 0 || res.status === 502 || res.status === 504) {
+    message = "Can't reach the server. Is the backend running?";
+  }
+  return new ApiError(message, res.status, code, requestId);
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers: headers({
+        ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
+        ...((init.headers as Record<string, string>) ?? {}),
+      }),
+    });
+  } catch {
+    throw new ApiError("Can't reach the server. Is the backend running?", 0, 'NETWORK');
+  }
+  if (!res.ok) throw await toError(res);
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+export const api = {
+  meta: () => request<Meta>('/api/meta'),
+  conversations: (q?: string) =>
+    request<Conversation[]>(`/api/conversations${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  conversation: (id: string) =>
+    request<{ conversation: Conversation; messages: StoredMessage[] }>(`/api/conversations/${encodeURIComponent(id)}`),
+  rename: (id: string, title: string) =>
+    request<Conversation>(`/api/conversations/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    }),
+  remove: (id: string) => request<void>(`/api/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  documents: () => request<DocumentInfo[]>('/api/documents'),
+  removeDocument: (id: string) => request<void>(`/api/documents/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  clearDocuments: () => request<{ deleted: number }>('/api/documents?confirm=true', { method: 'DELETE' }),
+  upload: (files: File[]) => {
+    const form = new FormData();
+    files.forEach((f) => form.append('files', f, f.name));
+    return request<UploadResponse>('/api/documents', { method: 'POST', body: form });
+  },
+  exportUrl: (id: string) => `${API_URL}/api/conversations/${encodeURIComponent(id)}/export`,
+  async exportMarkdown(id: string): Promise<{ filename: string; text: string }> {
+    const res = await fetch(this.exportUrl(id), { headers: headers() });
+    if (!res.ok) throw await toError(res);
+    const disposition = res.headers.get('content-disposition') ?? '';
+    const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'conversation.md';
+    return { filename, text: await res.text() };
+  },
+};
+
+export interface ChatBody {
+  message?: string;
+  conversation_id?: string | null;
+  regenerate?: boolean;
+  attachments?: { id: string; name: string }[];
 }
 
 /**
- * Stream chat response with reasoning steps (SSE).
- * Yields events as the agent thinks and takes actions.
+ * POST /api/chat/stream and yield parsed Server-Sent Events.
+ * Aborting the signal closes the connection, which stops generation server-side.
  */
-export async function* streamMessage(
-  request: ChatRequest
-): AsyncGenerator<StreamEvent, void, unknown> {
-  const response = await fetch(`${API_URL}/chat/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to send message' }));
-    throw new Error(error.detail || 'Failed to send message');
+export async function* streamChat(body: ChatBody, signal: AbortSignal): AsyncGenerator<StreamEvent> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/chat/stream`, {
+      method: 'POST',
+      headers: headers({ 'Content-Type': 'application/json', Accept: 'text/event-stream' }),
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') return;
+    throw new ApiError("Can't reach the server. Is the backend running?", 0, 'NETWORK');
   }
+  if (!res.ok) throw await toError(res);
+  if (!res.body) throw new ApiError('The server sent an empty response.', 500);
 
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw new Error('No response body');
-  }
-
+  const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-
-      // Keep the last incomplete line in the buffer
-      buffer = lines[lines.length - 1];
-
-      for (let i = 0; i < lines.length - 1; i++) {
-        const line = lines[i].trim();
-        if (line.startsWith('data: ')) {
-          try {
-            const eventData = JSON.parse(line.slice(6));
-            yield eventData as StreamEvent;
-          } catch (e) {
-            console.error('Failed to parse SSE event:', e);
-          }
+      let boundary: number;
+      // Events are separated by a blank line.
+      while ((boundary = buffer.search(/\r?\n\r?\n/)) !== -1) {
+        const raw = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary).replace(/^\r?\n\r?\n/, '');
+        const data = raw
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).replace(/^ /, ''))
+          .join('\n');
+        if (!data) continue; // comments / heartbeats / retry hints
+        try {
+          yield JSON.parse(data) as StreamEvent;
+        } catch {
+          console.warn('Skipping malformed event', data.slice(0, 120));
         }
       }
     }
-
-    // Process any remaining data
-    if (buffer.trim().startsWith('data: ')) {
-      try {
-        const eventData = JSON.parse(buffer.trim().slice(6));
-        yield eventData as StreamEvent;
-      } catch (e) {
-        console.error('Failed to parse final SSE event:', e);
-      }
-    }
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') return;
+    throw new ApiError('The connection dropped before the answer finished.', 0, 'STREAM_INTERRUPTED');
   } finally {
     reader.releaseLock();
   }
-}
-
-export async function getHealthStatus() {
-  const response = await fetch(`${API_URL}/health`);
-  if (!response.ok) throw new Error('Health check failed');
-  return response.json();
-}
-
-export async function getChatHistory() {
-  const response = await fetch(`${API_URL}/api/history/chats`);
-  if (!response.ok) throw new Error('Failed to fetch chat history');
-  return response.json();
-}
-
-export async function getChatById(chatId: string) {
-  const response = await fetch(`${API_URL}/api/history/chats/${chatId}`);
-  if (!response.ok) throw new Error('Failed to fetch chat');
-  return response.json();
-}
-
-export async function saveChat(data: any) {
-  const response = await fetch(`${API_URL}/api/history/chats`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) throw new Error('Failed to save chat');
-  return response.json();
-}
-
-export async function deleteChat(chatId: string) {
-  const response = await fetch(`${API_URL}/api/history/chats/${chatId}`, {
-    method: 'DELETE',
-  });
-  if (!response.ok) throw new Error('Failed to delete chat');
-  return response.json();
-}
-
-// ── Document Ingestion API ───────────────────────────────────────────────────
-
-export interface IngestResponse {
-  status: 'success' | 'partial' | 'error';
-  message: string;
-  files_processed: number;
-  total_chunks: number;
-  documents: string[];
-  errors: string[];
-}
-
-export interface IngestStatus {
-  total_documents: number;
-  document_names: string[];
-  last_ingested: string | null;
-}
-
-export interface DocumentInfo {
-  name: string;
-  chunks: number;
-  ingested_at: string;
-  file_type: string;
-}
-
-/**
- * Upload files to the backend for ingestion into the vector store.
- * Uses multipart/form-data.
- */
-export async function uploadDocuments(files: File[]): Promise<IngestResponse> {
-  const formData = new FormData();
-  for (const file of files) {
-    formData.append('files', file);
-  }
-
-  const response = await fetch(`${API_URL}/api/ingest/upload`, {
-    method: 'POST',
-    body: formData,
-    // No Content-Type header — browser sets it automatically with boundary
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
-    throw new Error(error.detail || 'Failed to upload documents');
-  }
-
-  return response.json();
-}
-
-/** Get ingestion status (total documents, last ingested time). */
-export async function getIngestStatus(): Promise<IngestStatus> {
-  const response = await fetch(`${API_URL}/api/ingest/status`);
-  if (!response.ok) throw new Error('Failed to fetch ingest status');
-  return response.json();
-}
-
-/** List all ingested documents with chunk counts. */
-export async function getIngestedDocuments(): Promise<DocumentInfo[]> {
-  const response = await fetch(`${API_URL}/api/ingest/documents`);
-  if (!response.ok) throw new Error('Failed to fetch documents');
-  return response.json();
-}
-
-/** Clear all documents from the knowledge base. */
-export async function clearKnowledgeBase(): Promise<void> {
-  const response = await fetch(`${API_URL}/api/ingest/documents`, {
-    method: 'DELETE',
-  });
-  if (!response.ok) throw new Error('Failed to clear knowledge base');
 }

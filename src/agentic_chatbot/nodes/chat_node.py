@@ -1,77 +1,26 @@
-import sys
+"""Chat route: one model call with conversation memory. Tokens stream to the client."""
+
+from __future__ import annotations
+
 import logging
-from langchain_core.messages import SystemMessage
-from agentic_chatbot.components.llm_loader import LLMLoader
-from agentic_chatbot.prompts.prompt import SYSTEM_PROMPT
-from agentic_chatbot.exception.exception import LLMException
-from agentic_chatbot.logging.logging_utils import (
-    ExecutionTimer,
-    get_correlation_id,
-    log_async,
-)
+
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
+
+from agentic_chatbot.components.llm_loader import get_llm
+from agentic_chatbot.core.settings import config_section
+from agentic_chatbot.entity.chat_state import Chatbot
+from agentic_chatbot.logging.logging_utils import ExecutionTimer
+from agentic_chatbot.prompts.prompt import build_chat_prompt
+from agentic_chatbot.utils.message_builder import conversational, message_text, strip_think
 
 logger = logging.getLogger(__name__)
 
-llm = LLMLoader().load_llm()
 
-
-@log_async()
-async def chat_node(state):
-    """
-    Simple chat node for conversational responses.
-    Formats system prompt with conversation summary and invokes LLM.
-    """
-    correlation_id = get_correlation_id()
-
-    with ExecutionTimer("chat_node", correlation_id, logger):
-        try:
-            logger.debug(
-                "Starting chat node processing",
-                extra={"correlation_id": correlation_id},
-            )
-
-            # Format the detailed system prompt with the summary (if it exists)
-            summary_text = (
-                state.summary if state.summary else "No previous conversation summary."
-            )
-            filled_prompt = SYSTEM_PROMPT.format(summary=summary_text)
-
-            # The prompt now contains the instructions to remember facts + the summary context
-            messages = [SystemMessage(content=filled_prompt)]
-
-            # Append the recent conversation history
-            recent_messages = state.messages[-10:]
-            messages.extend(recent_messages)
-
-            logger.debug(
-                f"Chat node context prepared with {len(messages)} messages",
-                extra={"correlation_id": correlation_id},
-            )
-
-            response = await llm.ainvoke(messages)
-
-            logger.info(
-                "Chat response generated successfully",
-                extra={
-                    "correlation_id": correlation_id,
-                    "response_length": (
-                        len(response.content) if hasattr(response, "content") else 0
-                    ),
-                },
-            )
-
-            return {"messages": [response]}
-
-        except LLMException:
-            raise
-        except Exception as e:
-            logger.error(
-                f"Chat node failed: {str(e)}",
-                extra={"correlation_id": correlation_id},
-                exc_info=True,
-            )
-            raise LLMException(
-                f"Failed to generate chat response: {str(e)}",
-                sys,
-                correlation_id=correlation_id,
-            )
+async def chat_node(state: Chatbot, config: RunnableConfig) -> dict:
+    with ExecutionTimer("chat_node", logger_instance=logger):
+        limit = int(config_section("memory").get("context_messages", 12))
+        messages = [SystemMessage(content=build_chat_prompt(state.summary))]
+        messages.extend(conversational(state.messages, limit))
+        response = await get_llm("main").ainvoke(messages, config=config)
+        return {"messages": [AIMessage(content=strip_think(message_text(response.content)), id=response.id)]}

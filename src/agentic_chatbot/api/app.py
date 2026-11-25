@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from agentic_chatbot.api.middleware import RequestContextMiddleware
-from agentic_chatbot.api.routes import chat, documents, history, system
+from agentic_chatbot.api.routes import chat, documents, history, models, system
 from agentic_chatbot.components.llm_loader import describe_llm
 from agentic_chatbot.components.memory import MemoryLoader
 from agentic_chatbot.core.context import get_request_id
@@ -122,7 +122,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID"],
         expose_headers=["X-Request-ID", "Retry-After"],
     )
@@ -158,6 +158,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(history.router)
     app.include_router(documents.router)
+    app.include_router(models.router)
 
     integrations = get_integrations()
     if integrations.openai_api.enabled:

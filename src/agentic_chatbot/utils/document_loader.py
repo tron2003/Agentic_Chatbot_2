@@ -16,7 +16,66 @@ TEXT_EXTENSIONS = {
     ".rb", ".php", ".sh", ".bat", ".ps1", ".r", ".kt", ".swift", ".scala",
 }
 PDF_EXTENSIONS = {".pdf"}
-SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | PDF_EXTENSIONS
+EXCEL_EXTENSIONS = {".xlsx", ".xlsm"}  # needs openpyxl; old binary .xls isn't supported
+WORD_EXTENSIONS = {".docx"}  # needs python-docx; old binary .doc isn't supported
+SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | PDF_EXTENSIONS | EXCEL_EXTENSIONS | WORD_EXTENSIONS
+
+
+def _cell_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return f"{value:.10g}"
+    if hasattr(value, "isoformat"):
+        return value.isoformat()  # dates and times
+    return str(value).strip()
+
+
+def _load_excel(path: Path) -> list[Document]:
+    """One document per sheet; each row as `a | b | c`, with computed values rather than formulas."""
+    import warnings
+
+    with warnings.catch_warnings():
+        # openpyxl warns about unsupported extras ("Data Validation extension is not
+        # supported"); they don't affect the cell values, so keep the logs quiet.
+        warnings.simplefilter("ignore", UserWarning)
+        return _read_excel(path)
+
+
+def _read_excel(path: Path) -> list[Document]:
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    docs = []
+    try:
+        for sheet in workbook.worksheets:
+            rows = []
+            for row in sheet.iter_rows(values_only=True):
+                cells = [_cell_text(v) for v in row]
+                while cells and not cells[-1]:
+                    cells.pop()
+                if any(cells):
+                    rows.append(" | ".join(cells))
+            if rows:
+                docs.append(Document(page_content=f"Sheet: {sheet.title}\n" + "\n".join(rows), metadata={"sheet": sheet.title}))
+    finally:
+        workbook.close()
+    return docs
+
+
+def _load_word(path: Path) -> list[Document]:
+    """Paragraphs in order, then each table with rows as `a | b | c`."""
+    import docx
+
+    document = docx.Document(str(path))
+    parts = [p.text.strip() for p in document.paragraphs if p.text.strip()]
+    for table in document.tables:
+        for row in table.rows:
+            cells = [c.text.strip() for c in row.cells]
+            if any(cells):
+                parts.append(" | ".join(cells))
+    text = "\n".join(parts)
+    return [Document(page_content=text, metadata={})] if text else []
 
 
 def safe_filename(name: str, max_length: int = 120) -> str:
@@ -59,6 +118,10 @@ class DocumentLoader:
                 if text:
                     docs.append(Document(page_content=text, metadata={"page": i}))
             return docs
+        if ext in EXCEL_EXTENSIONS:
+            return _load_excel(path)
+        if ext in WORD_EXTENSIONS:
+            return _load_word(path)
         raw = path.read_bytes()
         for encoding in ("utf-8", "utf-8-sig", "latin-1"):
             try:

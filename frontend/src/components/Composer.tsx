@@ -2,10 +2,8 @@ import { forwardRef, memo, useCallback, useImperativeHandle, useRef, useState, t
 import { ArrowUp, CircleAlert, CircleCheck, Loader2, Paperclip, Square, Upload, X } from 'lucide-react';
 import { useChat } from '@/lib/chat-store';
 import type { Attachment } from '@/lib/types';
+import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL } from '@/lib/uploads';
 import { cn } from '@/lib/utils';
-
-const ACCEPT =
-  '.pdf,.txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.xml,.yaml,.yml,.toml,.log,.sql,.html,.css,.py,.js,.ts,.jsx,.tsx,.java,.go,.rs,.c,.cpp,.h,.rb,.php,.sh';
 
 interface Pending {
   key: string;
@@ -193,7 +191,7 @@ export const Composer = memo(
               ref={fileRef}
               type="file"
               multiple
-              accept={ACCEPT}
+              accept={UPLOAD_ACCEPT}
               className="hidden"
               onChange={(e) => {
                 void addFiles(Array.from(e.target.files ?? []));
@@ -211,7 +209,7 @@ export const Composer = memo(
                 uploading ? 'border-line-strong bg-raised text-ink' : 'border-line bg-raised/60 text-muted',
               )}
               aria-label="Attach files to your document library"
-              title="Attach files. They're added to your document library so you can ask about them. You can also drop files here."
+              title={`Attach files (${UPLOAD_TYPES_LABEL}). They're added to your document library so you can ask about them. You can also drop files here.`}
             >
               {uploading ? (
                 <Loader2 className="size-4 animate-spin text-route-docs" />

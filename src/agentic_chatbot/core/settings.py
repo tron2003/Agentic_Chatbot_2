@@ -125,7 +125,7 @@ class Settings(BaseSettings):
     )
 
     environment: str = Field("development", description="development | production")
-    app_name: str = "Junction"
+    app_name: str = "Reittiä"  # shown in the UI and to connected apps; APP_NAME in .env overrides it
     app_version: str = "2.1.0"
 
     # Paths

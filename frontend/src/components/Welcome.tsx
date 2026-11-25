@@ -4,7 +4,7 @@ import { Composer, type ComposerHandle } from './Composer';
 import { RouteMap } from './RouteMap';
 import { useChat } from '@/lib/chat-store';
 import { ROUTE_LABEL, type Route } from '@/lib/types';
-import { cn } from '@/lib/utils';
+import { APP_NAME_FALLBACK, cn } from '@/lib/utils';
 
 const DOT: Record<Route, string> = { chat: 'bg-route-chat', rag: 'bg-route-docs', agent: 'bg-route-agent' };
 
@@ -16,15 +16,16 @@ export function Welcome({ onOpenLibrary }: { onOpenLibrary: () => void }) {
 
   const hasDocs = documents.length > 0;
   const web = meta?.web_search ?? false;
+  const webName = meta?.web_search_provider ? `web (${meta.web_search_provider})` : 'web';
   const agentNames = (meta?.integrations?.items ?? []).filter((i) => i.kind === 'agent').map((i) => i.label);
 
   const descriptions: Record<Route, string> = {
     chat: 'a direct answer',
     rag: hasDocs ? `${documents.length} ${documents.length === 1 ? 'file' : 'files'}, cited` : 'your files, cited',
     agent: agentNames.length
-      ? `${web ? 'web, tools' : 'tools'}, ${agentNames.join(', ')}${web ? '' : ' (no web search)'}`
+      ? `${web ? `${webName}, tools` : 'tools'}, ${agentNames.join(', ')}${web ? '' : ' (no web search)'}`
       : web
-        ? 'web search and tools'
+        ? `web search${meta?.web_search_provider ? ` (${meta.web_search_provider})` : ''} and tools`
         : 'tools (web search off)',
   };
 
@@ -48,7 +49,7 @@ export function Welcome({ onOpenLibrary }: { onOpenLibrary: () => void }) {
       </div>
 
       <motion.h1 {...enter(0.15)} className="text-[clamp(2rem,5.4vw,3.35rem)] font-[820] leading-[1.02] tracking-[-0.025em] text-ink text-balance">
-        Ask anything. Junction picks the route.
+        Ask anything. {meta?.app_name ?? APP_NAME_FALLBACK} picks the route.
       </motion.h1>
       <motion.p {...enter(0.25)} className="mt-4 max-w-[58ch] text-[16px] leading-relaxed text-muted text-pretty">
         Quick questions get a direct answer. Questions about your files search your library and cite it. Anything current goes to

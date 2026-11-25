@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Library, Monitor, Moon, Pencil, Plus, Search, Sun, Trash2, X } from 'lucide-react';
+import { Check, ChevronsUpDown, Library, Monitor, Moon, Pencil, Plus, Search, Sun, Trash2, X } from 'lucide-react';
 import type { ThemeChoice } from '@/hooks/useTheme';
 import { useChat } from '@/lib/chat-store';
 import type { Conversation, Integration } from '@/lib/types';
 import { TYPING_SPEEDS } from '@/lib/typing';
-import { cn, dateGroup, type DateGroup } from '@/lib/utils';
+import { APP_NAME_FALLBACK, cn, dateGroup, type DateGroup } from '@/lib/utils';
 
 const GROUP_ORDER: DateGroup[] = ['Today', 'Yesterday', 'Previous 7 days', 'Previous 30 days', 'Older'];
 
@@ -94,11 +94,9 @@ function Row({ c, active, onOpen }: { c: Conversation; active: boolean; onOpen: 
   );
 }
 
-const KIND_LABEL: Record<Integration['kind'], string> = {
-  agent: 'Agent Junction can ask',
-  inbound: 'Lets other apps use Junction',
-  webhook: 'Sends events',
-};
+function kindLabel(kind: Integration['kind'], app: string): string {
+  return { agent: `Agent ${app} can ask`, inbound: `Lets other apps use ${app}`, webhook: 'Sends events' }[kind];
+}
 
 function statusTone(status: string) {
   if (status === 'ok' || status === 'idle') return 'bg-route-agent';
@@ -117,7 +115,7 @@ function Connections() {
       {error ? <p className="text-[12.5px] leading-snug text-danger">{error}</p> : null}
       <ul className="space-y-0.5">
         {items.map((i) => (
-          <li key={i.name} className="flex items-center gap-2 py-0.5" title={`${KIND_LABEL[i.kind]}: ${i.detail} (${i.status})`}>
+          <li key={i.name} className="flex items-center gap-2 py-0.5" title={`${kindLabel(i.kind, meta?.app_name ?? APP_NAME_FALLBACK)}: ${i.detail} (${i.status})`}>
             <span className={cn('size-2 shrink-0 rounded-full', statusTone(i.status))} aria-hidden />
             <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{i.label}</span>
             <span className="shrink-0 text-[12px] text-faint">{i.status === 'ok' || i.status === 'idle' ? (i.kind === 'agent' ? 'connected' : 'on') : i.status}</span>
@@ -169,7 +167,10 @@ export function Sidebar({
   theme: ThemeChoice;
   onCycleTheme: () => void;
 }) {
-  const { conversations, conversationsLoaded, activeId, open: openConversation, newChat, searchConversations, documents, meta, serverDown } = useChat();
+  const {
+    conversations, conversationsLoaded, activeId, open: openConversation, newChat, searchConversations, documents, meta, serverDown,
+    setModelPickerOpen,
+  } = useChat();
   const [query, setQuery] = useState('');
 
   useEffect(() => {
@@ -206,7 +207,7 @@ export function Sidebar({
         <div className="flex items-center justify-between px-4 pb-3 pt-4">
           <a href="#" onClick={(e) => { e.preventDefault(); newChat(); onClose(); }} className="flex items-center gap-2.5 rounded-lg">
             <img src="/favicon.svg" alt="" className="size-7" />
-            <span className="text-[17px] font-[780] tracking-[-0.01em] text-ink">{meta?.app_name ?? 'Junction'}</span>
+            <span className="text-[17px] font-[780] tracking-[-0.01em] text-ink">{meta?.app_name ?? APP_NAME_FALLBACK}</span>
           </a>
           <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-muted hover:bg-raised hover:text-ink" aria-label="Close sidebar">
             <X className="size-4" />
@@ -278,14 +279,24 @@ export function Sidebar({
           </button>
           <Connections />
           <TypingSpeedControl />
-          <div className="flex items-center gap-2 px-3 py-1.5">
-            <span
-              className={cn('size-2 shrink-0 rounded-full', serverDown ? 'bg-danger' : meta?.llm_ready ? 'bg-route-agent' : 'bg-route-docs')}
-              aria-hidden
-            />
-            <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted" title={meta?.llm_error ?? undefined}>
-              {serverDown ? 'Server unreachable' : meta ? (meta.llm_ready ? meta.model.model : 'Model not configured') : 'Connecting'}
-            </span>
+          <div className="flex items-center gap-1 px-1.5 py-0.5">
+            <button
+              type="button"
+              onClick={() => setModelPickerOpen(true)}
+              disabled={serverDown || !meta}
+              className="group/model flex min-h-[36px] min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 text-left transition hover:bg-raised disabled:cursor-default disabled:hover:bg-transparent"
+              title={meta?.llm_error ?? (meta ? `${meta.model.provider}: ${meta.model.model}. Click to change.` : undefined)}
+              aria-label={meta?.llm_ready ? `Model: ${meta.model.model}. Change model` : 'Choose a model'}
+            >
+              <span
+                className={cn('size-2 shrink-0 rounded-full', serverDown ? 'bg-danger' : meta?.llm_ready ? 'bg-route-agent' : 'bg-route-docs')}
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted group-hover/model:text-ink">
+                {serverDown ? 'Server unreachable' : meta ? (meta.llm_ready ? meta.model.model : 'Choose a model') : 'Connecting'}
+              </span>
+              {meta && !serverDown && <ChevronsUpDown className="size-3.5 shrink-0 text-faint group-hover/model:text-ink" />}
+            </button>
             <button type="button" onClick={onCycleTheme} className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-ink" aria-label={themeLabel} title={themeLabel}>
               <ThemeIcon className="size-4" />
             </button>

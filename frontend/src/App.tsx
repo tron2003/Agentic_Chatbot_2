@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Backdrop } from '@/components/Backdrop';
 import { ChatView } from '@/components/ChatView';
 import { LibraryPanel } from '@/components/LibraryPanel';
+import { ModelPicker } from '@/components/ModelPicker';
 import { ApiKeyDialog, SetupBanner, Toasts } from '@/components/Overlays';
 import { Sidebar } from '@/components/Sidebar';
 import { TopBar } from '@/components/TopBar';
@@ -70,6 +71,7 @@ function Shell() {
         )}
       </main>
       <LibraryPanel open={libraryOpen} onClose={() => setLibraryOpen(false)} />
+      <ModelPicker />
       <Toasts />
       <ApiKeyDialog />
     </div>

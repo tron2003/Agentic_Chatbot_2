@@ -1,4 +1,14 @@
-import type { Conversation, DocumentInfo, Meta, StoredMessage, StreamEvent, UploadResponse } from './types';
+import type {
+  Conversation,
+  DocumentInfo,
+  Meta,
+  ModelCatalog,
+  ModelChoice,
+  ModelCurrent,
+  StoredMessage,
+  StreamEvent,
+  UploadResponse,
+} from './types';
 
 /** Empty in production (same origin as the API); set VITE_API_URL to call a separate host. */
 export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '';
@@ -97,6 +107,10 @@ export const api = {
     files.forEach((f) => form.append('files', f, f.name));
     return request<UploadResponse>('/api/documents', { method: 'POST', body: form });
   },
+  models: (refresh = false) => request<ModelCatalog>(`/api/models${refresh ? '?refresh=true' : ''}`),
+  setModels: (main: ModelChoice, router: ModelChoice | null) =>
+    request<ModelCurrent>('/api/models', { method: 'PUT', body: JSON.stringify({ main, router }) }),
+  resetModels: () => request<ModelCurrent>('/api/models', { method: 'DELETE' }),
   exportUrl: (id: string) => `${API_URL}/api/conversations/${encodeURIComponent(id)}/export`,
   async exportMarkdown(id: string): Promise<{ filename: string; text: string }> {
     const res = await fetch(this.exportUrl(id), { headers: headers() });

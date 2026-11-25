@@ -88,15 +88,54 @@ export interface Meta {
   version: string;
   model: { provider: string; model: string };
   router_model: { provider: string; model: string };
+  /** "ui" when chosen in the model picker, "env" when it comes from .env / config.yaml. */
+  model_source?: 'ui' | 'env';
   llm_ready: boolean;
   llm_error: string | null;
   auth_required: boolean;
   web_search: boolean;
+  web_search_provider?: string | null;
   tools: string[];
   knowledge_base: { backend: string; documents: number };
   persistence: string;
   limits: { max_upload_mb: number; max_message_chars: number };
   integrations?: { items: Integration[]; error: string | null };
+}
+
+export interface ModelChoice {
+  provider: string;
+  model: string;
+}
+
+export interface ModelOption {
+  id: string;
+  label?: string;
+  free?: boolean;
+  /** false when the provider says this model can't call tools (Research needs them). */
+  tools?: boolean | null;
+}
+
+export interface ProviderInfo {
+  id: string;
+  label: string;
+  configured: boolean;
+  needs: string | null;
+  default_model: string;
+  models: ModelOption[];
+  error: string | null;
+}
+
+export interface ModelCurrent {
+  main: ModelChoice;
+  router: ModelChoice;
+  source: 'ui' | 'env';
+  ready: boolean;
+  error: string | null;
+}
+
+export interface ModelCatalog {
+  current: ModelCurrent;
+  providers: ProviderInfo[];
 }
 
 export interface Integration {

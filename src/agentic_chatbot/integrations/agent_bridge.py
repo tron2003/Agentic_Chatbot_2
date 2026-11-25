@@ -18,6 +18,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, ToolException
 from pydantic import BaseModel, Field
 
+from agentic_chatbot.core.settings import get_settings
 from agentic_chatbot.integrations.config import ExternalAgentConfig
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,7 @@ async def ask_agent(agent: ExternalAgentConfig, task: str, conversation_id: str 
         raise AgentUnavailable(f"Couldn't reach {name} at {agent.base_url} ({type(exc).__name__}). Is it running?")
 
     if res.status_code in (401, 403):
-        raise AgentUnavailable(f"{name} rejected Junction's credentials (HTTP {res.status_code}). Check the token in .env.")
+        raise AgentUnavailable(f"{name} rejected {get_settings().app_name}'s credentials (HTTP {res.status_code}). Check the token in .env.")
     if res.status_code == 404:
         raise AgentUnavailable(f"{name} has no chat endpoint at {agent.base_url}. Is its OpenAI-compatible API turned on?")
     if res.status_code >= 400:

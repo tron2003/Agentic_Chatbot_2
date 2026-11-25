@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { FileText, Loader2, Trash2, Upload, X } from 'lucide-react';
 import { useChat } from '@/lib/chat-store';
+import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL } from '@/lib/uploads';
 import { cn, formatBytes } from '@/lib/utils';
 
 async function filesFromDrop(e: DragEvent): Promise<File[]> {
@@ -95,6 +96,7 @@ export function LibraryPanel({ open, onClose }: { open: boolean; onClose: () => 
                 ref={fileRef}
                 type="file"
                 multiple
+                accept={UPLOAD_ACCEPT}
                 className="hidden"
                 onChange={(e) => {
                   void add(Array.from(e.target.files ?? []));
@@ -123,7 +125,7 @@ export function LibraryPanel({ open, onClose }: { open: boolean; onClose: () => 
                 {busy ? <Loader2 className="size-6 animate-spin text-route-docs" /> : <Upload className="size-6 text-route-docs" />}
                 <span className="text-[14.5px] font-semibold text-ink">{busy ? 'Reading and indexing' : 'Add files or drop a folder'}</span>
                 <span className="text-[12.5px] text-muted">
-                  PDF, text, Markdown, CSV, JSON and code, up to {meta?.limits.max_upload_mb ?? 25} MB each
+                  {UPLOAD_TYPES_LABEL}, up to {meta?.limits.max_upload_mb ?? 25} MB each
                 </span>
               </button>
               {meta && !persistent && (

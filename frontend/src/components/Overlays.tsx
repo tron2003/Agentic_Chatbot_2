@@ -72,7 +72,7 @@ export function ApiKeyDialog() {
 }
 
 export function SetupBanner() {
-  const { meta, serverDown, refreshMeta } = useChat();
+  const { meta, serverDown, refreshMeta, setModelPickerOpen } = useChat();
   const [checking, setChecking] = useState(false);
   if (serverDown) {
     return (
@@ -88,6 +88,13 @@ export function SetupBanner() {
         className="glass mx-auto mt-16 flex w-fit max-w-[calc(100%-2rem)] flex-wrap items-center justify-center gap-x-3 gap-y-1.5 rounded-xl border border-route-docs/60 px-4 py-2 text-center text-[13.5px] text-ink"
       >
         <span>{meta.llm_error ?? 'No language model is configured.'}</span>
+        <button
+          type="button"
+          onClick={() => setModelPickerOpen(true)}
+          className="rounded-lg bg-accent px-2.5 py-0.5 text-[12.5px] font-semibold text-accent-ink transition active:scale-[0.97]"
+        >
+          Choose a model
+        </button>
         <button
           type="button"
           disabled={checking}

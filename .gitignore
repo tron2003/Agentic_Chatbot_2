@@ -15,6 +15,7 @@ venv/
 .ruff_cache/
 
 # runtime data
+config/model_selection.json
 workspace/
 artifacts/
 *.log

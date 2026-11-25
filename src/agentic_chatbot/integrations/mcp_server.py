@@ -40,10 +40,11 @@ def build_mcp_server(get_pipeline: Callable[[], Any], cfg: McpServerConfig):
         allowed_hosts=list(cfg.allowed_hosts),
         allowed_origins=[f"https://{h}" for h in cfg.allowed_hosts] + [f"http://{h}" for h in cfg.allowed_hosts],
     )
+    app = get_settings().app_name
     mcp = FastMCP(
-        name=get_settings().app_name,
+        name=app,
         instructions=(
-            "Junction is the user's assistant with a document library and research tools. "
+            f"{app} is the user's assistant with a document library and research tools. "
             "Use `ask` for questions (it decides whether to answer directly, search the user's documents, "
             "or research with tools) and pass conversation_id back for follow-ups. "
             "Use `search_documents` to pull raw passages from the user's files."
@@ -56,7 +57,7 @@ def build_mcp_server(get_pipeline: Callable[[], Any], cfg: McpServerConfig):
 
     @mcp.tool(
         description=(
-            "Ask Junction a question. It routes to a direct answer, the user's document library (with citations) "
+            f"Ask {app} a question. It routes to a direct answer, the user's document library (with citations) "
             "or web/tool research, and returns the answer with its sources. Pass the returned conversation_id to "
             "continue the same conversation."
         )
@@ -64,7 +65,7 @@ def build_mcp_server(get_pipeline: Callable[[], Any], cfg: McpServerConfig):
     async def ask(question: str, conversation_id: str | None = None) -> dict[str, Any]:
         pipeline = get_pipeline()
         if pipeline is None:
-            return {"error": "Junction is still starting."}
+            return {"error": f"{app} is still starting."}
         try:
             turn = await prepare_turn(pipeline, get_store(), conversation_id=conversation_id,
                                       message=question.strip(), source="mcp")

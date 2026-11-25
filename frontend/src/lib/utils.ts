@@ -2,6 +2,9 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import type { StoredMessage, UIMessage } from './types';
 
+/** Shown until /api/meta answers with the server's APP_NAME. */
+export const APP_NAME_FALLBACK = 'Reittiä';
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }

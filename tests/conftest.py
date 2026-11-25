@@ -22,6 +22,7 @@ os.environ.update(
         "DB_URI": "",
         "VECTOR_DB_URI": "",
         "TAVILY_API_KEY": "",
+        "WEB_SEARCH_PROVIDER": "off",  # never reach the internet from tests
         "API_KEYS": "",
         "RATE_LIMIT_PER_MINUTE": "1000",
         "DEMO_TOKEN_DELAY": "0",
@@ -43,6 +44,8 @@ def _fresh_state(tmp_path, monkeypatch):
     from agentic_chatbot.services import knowledge_base, store
 
     monkeypatch.setenv("WORKSPACE_DIR", str(tmp_path / "workspace"))
+    # Never read or write the real model picker choice from tests.
+    monkeypatch.setenv("MODEL_SELECTION_PATH", str(tmp_path / "model_selection.json"))
     reset_caches()
     reset_integrations()
     reset_llm_cache()

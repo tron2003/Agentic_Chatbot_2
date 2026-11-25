@@ -16,7 +16,7 @@ from agentic_chatbot.mcp.mcp_manager import mcp_manager
 from agentic_chatbot.services.knowledge_base import get_knowledge_base
 from agentic_chatbot.services.store import get_store
 from agentic_chatbot.tools.mcp_tools import get_agent_tools
-from agentic_chatbot.tools.web_tool import web_search_available
+from agentic_chatbot.tools.web_tool import web_search_available, web_search_provider_label
 
 router = APIRouter(tags=["system"])
 
@@ -61,10 +61,12 @@ async def meta():
         "version": settings.app_version,
         "model": llm["main"],
         "router_model": llm["router"],
+        "model_source": llm["source"],  # "ui" = chosen in the model picker, "env" = from .env / config.yaml
         "llm_ready": llm["configured"],
         "llm_error": llm["error"],
         "auth_required": bool(settings.api_key_set),
         "web_search": web_search_available(),
+        "web_search_provider": web_search_provider_label(),
         "tools": [t.name for t in get_agent_tools()],
         "knowledge_base": {"backend": kb.backend, "documents": len(await kb.document_names())},
         "persistence": get_store().backend,

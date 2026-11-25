@@ -26,6 +26,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from agentic_chatbot.core.settings import get_settings
 from agentic_chatbot.integrations import agent_bridge
 from agentic_chatbot.integrations.config import WebhookConfig, get_integrations
 
@@ -35,20 +36,21 @@ ROUTE_LABEL = {"chat": "Chat", "rag": "Documents", "agent": "Research"}
 
 
 def render_message(event: str, data: dict[str, Any]) -> str:
+    app = get_settings().app_name
     if event == "answer.completed":
         title = data.get("title") or "a question"
         route = ROUTE_LABEL.get(data.get("route") or "", "")
         content = (data.get("content") or "").strip()
         if len(content) > 1500:
             content = content[:1500] + "…"
-        return f'Junction finished answering "{title}"{f" ({route})" if route else ""}.\n\n{content}'
+        return f'{app} finished answering "{title}"{f" ({route})" if route else ""}.\n\n{content}'
     if event == "document.ingested":
-        return f"Junction added {data.get('name')} to the document library ({data.get('chunks')} passages)."
+        return f"{app} added {data.get('name')} to the document library ({data.get('chunks')} passages)."
     if event == "document.deleted":
-        return f"Junction removed {data.get('name')} from the document library."
+        return f"{app} removed {data.get('name')} from the document library."
     if event == "conversation.created":
-        return f'New Junction conversation: "{data.get("title")}".'
-    return f"Junction event {event}."
+        return f'New {app} conversation: "{data.get("title")}".'
+    return f"{app} event {event}."
 
 
 def sign(secret: str, body: bytes) -> str:
@@ -58,7 +60,7 @@ def sign(secret: str, body: bytes) -> str:
 def build_request(hook: WebhookConfig, event: str, data: dict[str, Any], delivery_id: str) -> tuple[bytes, dict[str, str]]:
     headers = {"Content-Type": "application/json", "User-Agent": "Junction-Webhooks/1", **hook.headers}
     if hook.format == "openclaw_agent":
-        payload: dict[str, Any] = {"message": render_message(event, data), "name": "Junction", "deliver": hook.deliver}
+        payload: dict[str, Any] = {"message": render_message(event, data), "name": get_settings().app_name, "deliver": hook.deliver}
         if hook.channel and hook.to:
             payload.update(channel=hook.channel, to=hook.to)
         if hook.agent_id:

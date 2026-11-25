@@ -31,6 +31,7 @@ interface ChatState {
   toasts: Toast[];
   needsApiKey: boolean;
   typingSpeed: TypingSpeed;
+  modelPickerOpen: boolean;
 }
 
 interface ChatActions {
@@ -53,6 +54,7 @@ interface ChatActions {
   submitApiKey: (key: string) => Promise<void>;
   refreshMeta: () => Promise<void>;
   setTypingSpeed: (speed: TypingSpeed) => void;
+  setModelPickerOpen: (open: boolean) => void;
 }
 
 const Ctx = createContext<(ChatState & ChatActions) | null>(null);
@@ -82,6 +84,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [needsApiKey, setNeedsApiKey] = useState(false);
   const [typingSpeed, setTypingSpeedState] = useState<TypingSpeed>(readTypingSpeed);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const typerRef = useRef<Typewriter | null>(null);
@@ -505,14 +508,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       meta, serverDown, conversations, conversationsLoaded, activeId, hasMessages, loadingConversation, streaming,
-      documents, toasts, needsApiKey, typingSpeed,
+      documents, toasts, needsApiKey, typingSpeed, modelPickerOpen,
       send, regenerate, stop, newChat, open, rename, remove, searchConversations, refreshDocuments, upload,
       removeDocument, clearDocuments, exportConversation, toast, dismissToast, submitApiKey, refreshMeta,
-      setTypingSpeed,
+      setTypingSpeed, setModelPickerOpen,
     }),
     [
       meta, serverDown, conversations, conversationsLoaded, activeId, hasMessages, loadingConversation, streaming,
-      documents, toasts, needsApiKey, typingSpeed, send, regenerate, stop, newChat, open, rename, remove,
+      documents, toasts, needsApiKey, typingSpeed, modelPickerOpen, send, regenerate, stop, newChat, open, rename, remove,
       searchConversations, refreshDocuments, upload, removeDocument, clearDocuments, exportConversation, toast,
       dismissToast, submitApiKey, refreshMeta, setTypingSpeed,
     ],

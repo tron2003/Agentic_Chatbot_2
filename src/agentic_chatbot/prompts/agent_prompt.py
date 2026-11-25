@@ -29,9 +29,9 @@ FINALIZE_INSTRUCTION = (
 
 
 NO_WEB_NOTE = (
-    "Web search is NOT available on this server (TAVILY_API_KEY is not set), so you cannot look anything up online. "
+    "Web search is NOT available on this server, so you cannot look anything up online. "
     "Answer from what you know, say clearly at the start that you could not check current sources, "
-    "and mention that adding TAVILY_API_KEY to .env turns web search on."
+    "and mention that web search needs TAVILY_API_KEY in .env or the ddgs package for DuckDuckGo."
 )
 FILE_TOOLS_NOTE = (
     "File tools (read_file, list_directory, directory_tree and similar) only see the local workspace folder. "

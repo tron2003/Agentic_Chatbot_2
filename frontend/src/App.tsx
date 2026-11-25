@@ -16,11 +16,11 @@ function focusComposer() {
 }
 
 function Shell() {
-  const { messages, activeId, loadingConversation, newChat, stop, streaming, meta } = useChat();
+  const { hasMessages, activeId, loadingConversation, newChat, stop, streaming, meta } = useChat();
   const { choice, cycle } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const [libraryOpen, setLibraryOpen] = useState(false);
-  const showWelcome = !activeId && messages.length === 0 && !loadingConversation;
+  const showWelcome = !activeId && !hasMessages && !loadingConversation;
 
   useEffect(() => {
     if (meta?.app_name) document.title = meta.app_name;

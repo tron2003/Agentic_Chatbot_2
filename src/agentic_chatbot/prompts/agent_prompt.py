@@ -9,7 +9,7 @@ AGENT_PROMPT = """You are a research agent with tools. Today's date is {today}.
 Your training data ends before today. For anything current (news, releases, prices, sports, people's roles), search first and trust the search results over your memory. Never claim an event hasn't happened if the results say it has.
 
 Tools available: {tools}
-
+{tool_notes}
 How to work
 1. Decide what you need to know, then call tools. Call independent tools in parallel.
 2. Read the results carefully. Search again with a sharper query if they are thin or conflicting.
@@ -28,9 +28,27 @@ FINALIZE_INSTRUCTION = (
 )
 
 
+NO_WEB_NOTE = (
+    "Web search is NOT available on this server (TAVILY_API_KEY is not set), so you cannot look anything up online. "
+    "Answer from what you know, say clearly at the start that you could not check current sources, "
+    "and mention that adding TAVILY_API_KEY to .env turns web search on."
+)
+FILE_TOOLS_NOTE = (
+    "File tools (read_file, list_directory, directory_tree and similar) only see the local workspace folder. "
+    "Use them only when the user asks about files there, never to look for general information."
+)
+_FILE_TOOLS = {"read_file", "read_text_file", "list_directory", "directory_tree", "search_files", "list_allowed_directories"}
+
+
 def build_agent_prompt(tool_names: list[str], summary: str | None) -> str:
+    notes = []
+    if "web_search" not in tool_names:
+        notes.append(NO_WEB_NOTE)
+    if _FILE_TOOLS & set(tool_names):
+        notes.append(FILE_TOOLS_NOTE)
     return AGENT_PROMPT.format(
         today=datetime.now().strftime("%A, %d %B %Y"),
         tools=", ".join(tool_names) or "none",
+        tool_notes="".join(f"\n{n}\n" for n in notes),
         summary=summary or "No earlier conversation.",
     )

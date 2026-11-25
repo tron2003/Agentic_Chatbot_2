@@ -11,6 +11,11 @@ import { useParallax } from '@/hooks/parallax';
 
 const TILE = 28;
 
+/** A blurred disc drawn as a gradient: solid core, long soft edge. */
+function glow(color: string) {
+  return `radial-gradient(circle closest-side, ${color} 0%, ${color} 38%, color-mix(in oklab, ${color} 45%, transparent) 66%, transparent 100%)`;
+}
+
 function useLayer(depth: number, scrollMode: { kind: 'wrap'; rate: number } | { kind: 'ease'; amp: number }) {
   const { px, py, scroll, reduced } = useParallax();
   const range = 40 * depth;
@@ -32,20 +37,23 @@ export function Backdrop() {
   const near = useLayer(1, { kind: 'ease', amp: 300 });
 
   return (
-    <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
-      {/* near: glows */}
-      <motion.div style={near} className="absolute -inset-[15%]">
+    // `contain` keeps the moving layers from invalidating layout or paint outside this box.
+    <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden [contain:strict]">
+      {/* near: glows. Soft radial gradients instead of CSS blur(90px): they look the same,
+          but a 90px blur over a screen-sized layer is one of the most expensive things a
+          browser can paint, and it was being repainted as the layer moved. */}
+      <motion.div style={near} className="absolute -inset-[15%] will-change-transform">
         <div
-          className="absolute left-[8%] top-[4%] h-[46vmax] w-[46vmax] rounded-full blur-[90px]"
-          style={{ background: 'var(--route-chat)', opacity: 'var(--glow-opacity)' }}
+          className="absolute left-[8%] top-[4%] h-[46vmax] w-[46vmax] rounded-full"
+          style={{ background: glow('var(--route-chat)'), opacity: 'var(--glow-opacity)' }}
         />
         <div
-          className="absolute right-[2%] top-[38%] h-[38vmax] w-[38vmax] rounded-full blur-[90px]"
-          style={{ background: 'var(--route-agent)', opacity: 'calc(var(--glow-opacity) * 0.85)' }}
+          className="absolute right-[2%] top-[38%] h-[38vmax] w-[38vmax] rounded-full"
+          style={{ background: glow('var(--route-agent)'), opacity: 'calc(var(--glow-opacity) * 0.85)' }}
         />
         <div
-          className="absolute bottom-[-6%] left-[30%] h-[30vmax] w-[30vmax] rounded-full blur-[100px]"
-          style={{ background: 'var(--route-docs)', opacity: 'calc(var(--glow-opacity) * 0.55)' }}
+          className="absolute bottom-[-6%] left-[30%] h-[30vmax] w-[30vmax] rounded-full"
+          style={{ background: glow('var(--route-docs)'), opacity: 'calc(var(--glow-opacity) * 0.55)' }}
         />
       </motion.div>
 
@@ -58,7 +66,7 @@ export function Backdrop() {
           maskImage: 'radial-gradient(ellipse 75% 70% at 50% 40%, black 30%, transparent 85%)',
           WebkitMaskImage: 'radial-gradient(ellipse 75% 70% at 50% 40%, black 30%, transparent 85%)',
         }}
-        className="absolute -inset-[60px]"
+        className="absolute -inset-[60px] will-change-transform"
       />
 
       {/* mid: transit lines */}
@@ -68,7 +76,7 @@ export function Backdrop() {
           maskImage: 'radial-gradient(ellipse 38% 46% at 50% 52%, transparent 35%, black 80%)',
           WebkitMaskImage: 'radial-gradient(ellipse 38% 46% at 50% 52%, transparent 35%, black 80%)',
         }}
-        className="absolute -inset-[10%] h-[120%] w-[120%]"
+        className="absolute -inset-[10%] h-[120%] w-[120%] will-change-transform"
         viewBox="0 0 1440 900"
         preserveAspectRatio="xMidYMid slice"
         fill="none"

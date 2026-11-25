@@ -12,21 +12,78 @@ Two sources, each with a clear job:
 
 from __future__ import annotations
 
+import logging
 import os
 import re
+import threading
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import yaml
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+logger = logging.getLogger(__name__)
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+ENV_FILE = PROJECT_ROOT / ".env"
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
+
+# Names of the variables that were put into os.environ from .env (rather than
+# set by the real environment). Kept in the environment itself so the dev
+# server's reloader child process, which inherits os.environ, still knows which
+# values came from the file and may be refreshed when the file changes.
+_OWNED_ENV = "JUNCTION_DOTENV_KEYS"
+
+
+def _owned_keys() -> set[str]:
+    return {k for k in os.environ.get(_OWNED_ENV, "").split(",") if k}
+
+
+def load_env_file() -> None:
+    """Apply ``.env`` to ``os.environ``.
+
+    Variables set by the real environment (shell, Docker, Render) always win,
+    as before. Variables that came from ``.env`` are updated when the file
+    changes, and removed when they are deleted from it.
+    """
+    values = dotenv_values(ENV_FILE) if ENV_FILE.exists() else {}
+    owned = _owned_keys()
+    for key in list(owned):
+        if key not in values:
+            os.environ.pop(key, None)
+            owned.discard(key)
+    for key, value in values.items():
+        if value is None:
+            continue
+        if key in os.environ and key not in owned:
+            continue  # set by the real environment
+        os.environ[key] = value
+        owned.add(key)
+    os.environ[_OWNED_ENV] = ",".join(sorted(owned))
+
+
+def _watched_files() -> list[Path]:
+    config = Path(os.environ.get("CONFIG_PATH") or DEFAULT_CONFIG_PATH)
+    return [ENV_FILE, config]
+
+
+def _fingerprint() -> tuple[int, ...]:
+    stamps = []
+    for path in _watched_files():
+        try:
+            stamps.append(path.stat().st_mtime_ns)
+        except OSError:
+            stamps.append(0)
+    return tuple(stamps)
+
 
 # Load .env early so that YAML ${VAR} expansion sees the same values.
-load_dotenv(PROJECT_ROOT / ".env", override=False)
+load_env_file()
+_watch_state: tuple[int, ...] | None = _fingerprint()
+_watch_lock = threading.Lock()
 
 _ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-(.*?))?\}")
 
@@ -154,6 +211,29 @@ def reset_caches() -> None:
     """Used by tests after changing environment variables."""
     get_settings.cache_clear()
     get_app_config.cache_clear()
+
+
+def reload_if_changed(force: bool = False) -> bool:
+    """Re-read ``.env`` and ``config.yaml`` if either was saved since the last check.
+
+    Settings used to be read once at startup, so editing ``.env`` (for example
+    switching ``LLM_PROVIDER``) did nothing until the server was restarted, and
+    the UI kept reporting the old model as "not configured". This costs two
+    ``stat`` calls, so it is cheap enough to call on every request.
+    Returns True when the configuration was reloaded.
+    """
+    global _watch_state
+    current = _fingerprint()
+    if not force and current == _watch_state:
+        return False
+    with _watch_lock:
+        if not force and current == _watch_state:
+            return False
+        load_env_file()
+        reset_caches()
+        _watch_state = current
+    logger.info("Configuration reloaded from .env / config.yaml")
+    return True
 
 
 def pg_conninfo(uri: str) -> str:

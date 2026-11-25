@@ -10,7 +10,10 @@ import { useMotionValue, useReducedMotion, useSpring, useTransform, type MotionV
 interface ParallaxInputs {
   px: MotionValue<number>;
   py: MotionValue<number>;
+  /** Eased scroll position: layers glide to it instead of jumping. */
   scroll: MotionValue<number>;
+  /** Raw scroll position, written by useScrollParallax. */
+  scrollInput: MotionValue<number>;
   reduced: boolean;
 }
 
@@ -20,9 +23,10 @@ export function ParallaxProvider({ children }: { children: ReactNode }) {
   const reduced = useReducedMotion() ?? false;
   const rawX = useMotionValue(0);
   const rawY = useMotionValue(0);
-  const scroll = useMotionValue(0);
+  const scrollInput = useMotionValue(0);
   const px = useSpring(rawX, { stiffness: 60, damping: 18, mass: 0.6 });
   const py = useSpring(rawY, { stiffness: 60, damping: 18, mass: 0.6 });
+  const scroll = useSpring(scrollInput, { stiffness: 90, damping: 26, mass: 0.8 });
 
   useEffect(() => {
     if (reduced) return;
@@ -44,7 +48,7 @@ export function ParallaxProvider({ children }: { children: ReactNode }) {
     };
   }, [reduced, rawX, rawY]);
 
-  const value = useMemo(() => ({ px, py, scroll, reduced }), [px, py, scroll, reduced]);
+  const value = useMemo(() => ({ px, py, scroll, scrollInput, reduced }), [px, py, scroll, scrollInput, reduced]);
   return <ParallaxCtx.Provider value={value}>{children}</ParallaxCtx.Provider>;
 }
 
@@ -69,18 +73,22 @@ export function useDepth(depth: number, scrollRate = 0) {
   return { x, y };
 }
 
-/** Feed a scroll container's position into the parallax system. */
-export function useScrollParallax(ref: React.RefObject<HTMLElement | null>) {
-  const { scroll, reduced } = useParallax();
+/**
+ * Feed a scroll container's position into the parallax system.
+ * While `paused`, scrolling doesn't move the background; when it resumes, the
+ * layers glide to the current position.
+ */
+export function useScrollParallax(ref: React.RefObject<HTMLElement | null>, paused = false) {
+  const { scrollInput, reduced } = useParallax();
   useEffect(() => {
     const el = ref.current;
-    if (!el || reduced) return;
-    const onScroll = () => scroll.set(el.scrollTop);
+    if (!el || reduced || paused) return;
+    const onScroll = () => scrollInput.set(el.scrollTop);
     onScroll();
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      el.removeEventListener('scroll', onScroll);
-      scroll.set(0);
-    };
-  }, [ref, scroll, reduced]);
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [ref, scrollInput, reduced, paused]);
+
+  // Back to rest when the list goes away (e.g. a new chat).
+  useEffect(() => () => scrollInput.set(0), [scrollInput]);
 }

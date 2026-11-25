@@ -1,8 +1,9 @@
 import { memo, useState, type ReactNode } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import ReactMarkdown, { type Components, type Options } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
 import { Check, Copy } from 'lucide-react';
+import { rehypeCaret, splitBlocks } from '@/lib/markdown-stream';
 
 function textOf(node: ReactNode): string {
   if (typeof node === 'string' || typeof node === 'number') return String(node);
@@ -62,17 +63,43 @@ const components: Components = {
   },
 };
 
-export const Markdown = memo(function Markdown({ text, streaming }: { text: string; streaming?: boolean }) {
+// Plugin lists are module constants so react-markdown sees the same arrays every render.
+const REMARK: Options['remarkPlugins'] = [remarkGfm];
+const HIGHLIGHT: Options['rehypePlugins'] = [[rehypeHighlight, { detect: true, ignoreMissing: true }]];
+const CARET: Options['rehypePlugins'] = [rehypeCaret];
+const NONE: Options['rehypePlugins'] = [];
+
+/**
+ * One finished chunk of a streaming answer. Memoised on its text, so once a
+ * paragraph or list is complete it is never parsed or rendered again while the
+ * rest of the answer is still being typed.
+ */
+const Block = memo(function Block({ text, caret }: { text: string; caret: boolean }) {
   return (
-    <div className={streaming ? 'prose-answer [&>*:last-child]:caret' : 'prose-answer'}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={streaming ? [] : [[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
-        components={components}
-        skipHtml
-      >
-        {text}
-      </ReactMarkdown>
+    <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={caret ? CARET : NONE} components={components} skipHtml>
+      {text}
+    </ReactMarkdown>
+  );
+});
+
+export const Markdown = memo(function Markdown({ text, streaming }: { text: string; streaming?: boolean }) {
+  if (!streaming) {
+    return (
+      <div className="prose-answer">
+        <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={HIGHLIGHT} components={components} skipHtml>
+          {text}
+        </ReactMarkdown>
+      </div>
+    );
+  }
+  // While streaming, only the last block changes; react-markdown renders no
+  // wrapper element, so the blocks are still direct children of .prose-answer.
+  const blocks = splitBlocks(text);
+  return (
+    <div className="prose-answer">
+      {blocks.map((block, i) => (
+        <Block key={i} text={block} caret={i === blocks.length - 1} />
+      ))}
     </div>
   );
 });

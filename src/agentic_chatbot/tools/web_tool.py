@@ -22,12 +22,17 @@ def web_search_available() -> bool:
     return bool(os.getenv("TAVILY_API_KEY"))
 
 
-@lru_cache(maxsize=1)
 def _client():
+    # Keyed by the key itself, so a TAVILY_API_KEY added or changed in .env is used without a restart.
+    return _client_for(os.environ["TAVILY_API_KEY"])
+
+
+@lru_cache(maxsize=2)
+def _client_for(api_key: str):
     from langchain_tavily import TavilySearch
 
     return TavilySearch(
-        api_key=os.environ["TAVILY_API_KEY"],
+        api_key=api_key,
         max_results=int(config_section("agent").get("web_results", 5)),
         search_depth="advanced",
     )

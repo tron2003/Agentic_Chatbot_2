@@ -16,7 +16,14 @@ interface ChatState {
   conversations: Conversation[];
   conversationsLoaded: boolean;
   activeId: string | null;
-  messages: UIMessage[];
+  /**
+   * Whether the open conversation has any messages. The messages themselves
+   * live in a separate context (useMessages) because they change on every
+   * typed frame; keeping them out of this one stops the sidebar, top bar,
+   * composer and overlays from re-rendering 60 times a second while an answer
+   * is being written.
+   */
+  hasMessages: boolean;
   loadingConversation: boolean;
   /** True while an answer is generating or still being typed out. */
   streaming: boolean;
@@ -49,6 +56,7 @@ interface ChatActions {
 }
 
 const Ctx = createContext<(ChatState & ChatActions) | null>(null);
+const MessagesCtx = createContext<UIMessage[] | null>(null);
 
 function readHash(): string | null {
   const m = /^#\/c\/([A-Za-z0-9_\-:.]+)$/.exec(window.location.hash);
@@ -118,7 +126,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // ── bootstrap ─────────────────────────────────────────────────────────────
   const refreshMeta = useCallback(async () => {
     try {
-      setMeta(await api.meta());
+      const next = await api.meta();
+      // Keep the same object when nothing changed, so re-checks don't re-render the app.
+      setMeta((prev) => (prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
       setServerDown(false);
     } catch (err) {
       if (err instanceof ApiError && err.code === 'NETWORK') setServerDown(true);
@@ -194,6 +204,24 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }, 5000);
     return () => window.clearInterval(t);
   }, [serverDown, refreshMeta, loadConversations]);
+
+  // The server picks up .env changes without a restart, so re-check the model
+  // whenever the tab comes back into view, and every few seconds while it isn't
+  // configured. The "not configured" banner then clears on its own once fixed.
+  const modelMissing = !!meta && !meta.llm_ready && !serverDown;
+  useEffect(() => {
+    const recheck = () => {
+      if (document.visibilityState === 'visible') void refreshMeta();
+    };
+    window.addEventListener('focus', recheck);
+    document.addEventListener('visibilitychange', recheck);
+    const t = modelMissing ? window.setInterval(recheck, 4000) : undefined;
+    return () => {
+      window.removeEventListener('focus', recheck);
+      document.removeEventListener('visibilitychange', recheck);
+      if (t) window.clearInterval(t);
+    };
+  }, [modelMissing, refreshMeta]);
 
   // ── streaming ─────────────────────────────────────────────────────────────
   const patch = useCallback((id: string, fn: (m: UIMessage) => UIMessage) => {
@@ -473,27 +501,39 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [loadConversations, refreshDocuments, refreshMeta],
   );
 
+  const hasMessages = messages.length > 0;
   const value = useMemo(
     () => ({
-      meta, serverDown, conversations, conversationsLoaded, activeId, messages, loadingConversation, streaming,
+      meta, serverDown, conversations, conversationsLoaded, activeId, hasMessages, loadingConversation, streaming,
       documents, toasts, needsApiKey, typingSpeed,
       send, regenerate, stop, newChat, open, rename, remove, searchConversations, refreshDocuments, upload,
       removeDocument, clearDocuments, exportConversation, toast, dismissToast, submitApiKey, refreshMeta,
       setTypingSpeed,
     }),
     [
-      meta, serverDown, conversations, conversationsLoaded, activeId, messages, loadingConversation, streaming,
+      meta, serverDown, conversations, conversationsLoaded, activeId, hasMessages, loadingConversation, streaming,
       documents, toasts, needsApiKey, typingSpeed, send, regenerate, stop, newChat, open, rename, remove,
       searchConversations, refreshDocuments, upload, removeDocument, clearDocuments, exportConversation, toast,
       dismissToast, submitApiKey, refreshMeta, setTypingSpeed,
     ],
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={value}>
+      <MessagesCtx.Provider value={messages}>{children}</MessagesCtx.Provider>
+    </Ctx.Provider>
+  );
 }
 
 export function useChat() {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error('useChat must be used inside <ChatProvider>');
   return ctx;
+}
+
+/** Messages of the open conversation. Changes on every typed frame, so only the message list should use it. */
+export function useMessages() {
+  const messages = useContext(MessagesCtx);
+  if (!messages) throw new Error('useMessages must be used inside <ChatProvider>');
+  return messages;
 }

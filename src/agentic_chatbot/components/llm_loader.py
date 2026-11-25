@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 from langchain_core.language_models import BaseChatModel
 
-from agentic_chatbot.core.settings import config_section, get_settings
+from agentic_chatbot.core.settings import config_section, get_settings, reload_if_changed
 from agentic_chatbot.exception.exception import LLMConfigError
 
 logger = logging.getLogger(__name__)
@@ -56,8 +56,15 @@ def _model_name(provider: str, role: Role) -> str:
     return str(block.get("model_name") or "")
 
 
+def sync_config() -> None:
+    """Pick up edits to .env / config.yaml without restarting the server."""
+    if reload_if_changed():
+        reset_llm_cache()
+
+
 def describe_llm() -> dict[str, Any]:
     """Non-secret description of the configured models, for /api/meta."""
+    sync_config()
     info: dict[str, Any] = {}
     for role in ("main", "router"):
         provider = _provider_name(role)  # type: ignore[arg-type]
@@ -89,8 +96,8 @@ def _build(provider: str, role: Role) -> BaseChatModel:
         raise LLMConfigError(
             f"{_KEY_ENV[provider]} is not set",
             public_message=(
-                f"The '{provider}' model needs {_KEY_ENV[provider]}. Add it to .env, "
-                "or set LLM_PROVIDER=demo to try the app without a key."
+                f"LLM_PROVIDER is '{provider}', which needs {_KEY_ENV[provider]}. Add the key to .env, "
+                "or change LLM_PROVIDER (demo works without a key). Saved changes apply without a restart."
             ),
         )
     if not model:
@@ -149,6 +156,7 @@ def _cached(provider: str, role: Role) -> BaseChatModel:
 
 
 def get_llm(role: Role = "main") -> BaseChatModel:
+    sync_config()
     return _cached(_provider_name(role), role)
 
 

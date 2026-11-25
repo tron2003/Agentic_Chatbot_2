@@ -24,22 +24,53 @@ from agentic_chatbot.utils.message_builder import conversational, latest_user_te
 logger = logging.getLogger(__name__)
 
 _AGENT_HINT = re.compile(
-    r"\b(today|tonight|latest|news|current(ly)?|right now|price|stock|score|weather|release[sd]?|"
-    r"this (week|month|year)|who (is|won)|search|look up|calculate|compute|20[2-3]\d)\b|\d+\s*[-+*/^]\s*\d+",
+    r"\b(today|tonight|latest|news|current(ly)?|right now|price|stock|shares?|score|weather|release[sd]?|"
+    r"this (week|month|year)|who (is|won)|search|look up|calculate|compute|20[2-3]\d|"
+    r"research|investigat\w*|find out|fact[- ]check|holdings?|invest(ment|ments|or|ors)?|ceo|revenue|market cap|valuation)\b"
+    r"|\d+\s*[-+*/^]\s*\d+",
     re.I,
 )
 _DOC_HINT = re.compile(r"\b(document|docs|pdf|paper|report|file|uploaded|my notes|knowledge base)\b", re.I)
 
+# The user explicitly asks for research or a lookup. That always goes to Research,
+# whatever the router model says, because only that route can search.
+_RESEARCH_INTENT = re.compile(
+    r"\b(research|investigate|look\s+(it\s+|this\s+|that\s+)?up|look into|search (for|the web|online|about)|"
+    r"find out|google|fact[- ]check)\b",
+    re.I,
+)
+
 ROUTE_LABELS = {"chat": "Chat", "rag": "Documents", "agent": "Research"}
+_ROUTE_WORD = re.compile(r"\b(chat|rag|agent)\b", re.I)
 
 
 def heuristic_route(text: str, kb_available: bool) -> Router:
-    """Used when the model can't produce a structured routing decision."""
+    """Used when the model can't produce a routing decision at all."""
     if kb_available and _DOC_HINT.search(text):
         return Router(route="rag", reason="Mentions the user's documents.")
     if _AGENT_HINT.search(text):
-        return Router(route="agent", reason="Looks time-sensitive or needs a tool.")
+        return Router(route="agent", reason="Looks time-sensitive, asks for research, or needs a tool.")
     return Router(route="chat", reason="General conversation.")
+
+
+def apply_research_intent(decision: Router, text: str) -> Router:
+    """An explicit request to research or look something up always goes to Research."""
+    if decision.route == "chat" and _RESEARCH_INTENT.search(text):
+        return Router(route="agent", reason="You asked to research or look this up, so it goes to Research.")
+    return decision
+
+
+async def _plain_route(system: str, prompt: str, config: RunnableConfig) -> Router:
+    """Second try for models whose structured output fails now and then: ask for one word."""
+    response = await get_llm("router").ainvoke(
+        [SystemMessage(content=system + "\n\nAnswer with exactly one word: chat, rag or agent."), HumanMessage(content=prompt)],
+        config=config,
+    )
+    content = response.content if isinstance(response.content, str) else str(response.content)
+    match = _ROUTE_WORD.search(content)
+    if not match:
+        raise ValueError(f"no route in router reply: {content[:80]!r}")
+    return Router(route=match.group(1).lower(), reason="Chosen by the router model (plain-text answer).")
 
 
 async def router_node(state: Chatbot, config: RunnableConfig) -> dict:
@@ -57,20 +88,29 @@ async def router_node(state: Chatbot, config: RunnableConfig) -> dict:
             + f"Latest user message:\n{question}"
         )
 
+        system = build_router_prompt(documents, tool_names, agent_capabilities())
+        quiet = {**config, "tags": [*config.get("tags", []), "nostream"]}
         try:
             structured = get_llm("router").with_structured_output(Router)
-            decision = await structured.ainvoke(
-                [SystemMessage(content=build_router_prompt(documents, tool_names, agent_capabilities())), HumanMessage(content=prompt)],
-                config={**config, "tags": [*config.get("tags", []), "nostream"]},
-            )
+            decision = await structured.ainvoke([SystemMessage(content=system), HumanMessage(content=prompt)], config=quiet)
             if not isinstance(decision, Router):
                 decision = Router.model_validate(decision)
         except LLMConfigError:
             raise
         except Exception as exc:
-            logger.warning("Router model failed (%s); using heuristic routing", exc)
-            decision = heuristic_route(question, kb_available)
+            # Small/free models fail structured output now and then (bad JSON, a 429).
+            # Before this fallback existed, every failure went straight to keyword routing.
+            logger.warning("Router structured output failed (%s: %s); asking for a plain answer", type(exc).__name__, exc)
+            try:
+                decision = await _plain_route(system, prompt, quiet)
+            except LLMConfigError:
+                raise
+            except Exception as exc2:
+                logger.warning("Router model failed again (%s: %s); using keyword routing", type(exc2).__name__, exc2)
+                fallback = heuristic_route(question, kb_available)
+                decision = Router(route=fallback.route, reason=f"Router model unavailable; keyword match: {fallback.reason}")
 
+        decision = apply_research_intent(decision, question)
         route = decision.route
         reason = decision.reason
         if route == "rag" and not kb_available:

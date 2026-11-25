@@ -19,16 +19,27 @@ rag
 
 agent
 - Anything that depends on current or changing information: news, prices, releases, sports, weather, "latest", "today", "this week".
+- Facts about specific companies, funds, people or places that change over time: who runs them, what they own or invest in, revenue, rankings, statistics.
+- Any message that asks to research, look up, search, find out, investigate or fact-check something.
 - Tasks that need a tool: arithmetic, date maths, looking things up on the web, reading files, GitHub lookups.{tools_line}
 - Multi-step research or verification across sources.{agents_line}
 
 Rules
 -----
-1. Current events, sports, prices or anything time-sensitive -> agent.
-2. Questions that reference "my document", "the paper", "the PDF", "the file I uploaded" or that match the documents listed above -> rag.
-3. If the knowledge base is empty, never choose rag.
-4. When unsure between chat and agent, choose agent.
-5. Otherwise -> chat.
+1. The user says "research", "look up", "search", "find out" or "investigate" -> agent. Always.
+2. Current events, sports, prices, company holdings or anything time-sensitive -> agent.
+3. Questions that reference "my document", "the paper", "the PDF", "the file I uploaded" or that match the documents listed above -> rag.
+4. If the knowledge base is empty, never choose rag.
+5. When unsure between chat and agent, choose agent.
+6. Otherwise -> chat.
+
+Examples
+--------
+"hi dude" -> chat
+"explain the difference between RAG and fine-tuning" -> chat
+"research Vanguard and which companies it invests in" -> agent
+"who is the CEO of Vanguard?" -> agent
+"how are microplastics harmful? research it" -> agent
 
 Return the route and a one-sentence reason."""
 

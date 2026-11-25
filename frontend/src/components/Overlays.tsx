@@ -72,7 +72,8 @@ export function ApiKeyDialog() {
 }
 
 export function SetupBanner() {
-  const { meta, serverDown } = useChat();
+  const { meta, serverDown, refreshMeta } = useChat();
+  const [checking, setChecking] = useState(false);
   if (serverDown) {
     return (
       <div className="glass mx-auto mt-16 w-fit max-w-[calc(100%-2rem)] rounded-xl border border-danger/50 px-4 py-2 text-center text-[13.5px] text-ink">
@@ -82,8 +83,23 @@ export function SetupBanner() {
   }
   if (meta && !meta.llm_ready) {
     return (
-      <div className="glass mx-auto mt-16 w-fit max-w-[calc(100%-2rem)] rounded-xl border border-route-docs/60 px-4 py-2 text-center text-[13.5px] text-ink">
-        {meta.llm_error ?? 'No language model is configured.'}
+      <div
+        role="status"
+        className="glass mx-auto mt-16 flex w-fit max-w-[calc(100%-2rem)] flex-wrap items-center justify-center gap-x-3 gap-y-1.5 rounded-xl border border-route-docs/60 px-4 py-2 text-center text-[13.5px] text-ink"
+      >
+        <span>{meta.llm_error ?? 'No language model is configured.'}</span>
+        <button
+          type="button"
+          disabled={checking}
+          onClick={async () => {
+            setChecking(true);
+            await refreshMeta();
+            setChecking(false);
+          }}
+          className="rounded-lg border border-line bg-raised px-2.5 py-0.5 text-[12.5px] font-semibold transition hover:border-line-strong active:scale-[0.97] disabled:opacity-60"
+        >
+          {checking ? 'Checking…' : 'Check again'}
+        </button>
       </div>
     );
   }

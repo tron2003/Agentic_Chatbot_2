@@ -101,6 +101,46 @@ def conversational(messages: Sequence[BaseMessage], limit: int) -> list[BaseMess
     return window
 
 
+def count_tokens(messages: Sequence[BaseMessage]) -> int:
+    """Approximate token count (about 4 characters per token), good enough for budgeting."""
+    from langchain_core.messages.utils import count_tokens_approximately
+
+    return count_tokens_approximately(list(messages)) if messages else 0
+
+
+def context_window(messages: Sequence[BaseMessage], max_tokens: int | None = None,
+                   max_messages: int | None = None) -> list[BaseMessage]:
+    """Short-term memory sent to the model: the most recent turns that fit a token budget.
+
+    Counting tokens instead of messages keeps a few long answers (a research
+    report, a pasted file) from overflowing the model's context window, while
+    many short messages still fit. The window always starts at a user message,
+    and the newest user message is always kept, even when it alone is over budget.
+    Older messages are not lost: the summarise block folds them into the summary.
+    """
+    from agentic_chatbot.core.settings import config_section
+
+    cfg = config_section("memory")
+    budget = int(max_tokens or cfg.get("context_tokens", 3000))
+    limit = int(max_messages or cfg.get("context_messages", 12))
+    window = conversational(messages, limit)
+    if not window:
+        return window
+
+    kept: list[BaseMessage] = []
+    used = 0
+    for m in reversed(window):
+        cost = count_tokens([m])
+        if kept and used + cost > budget:
+            break
+        kept.append(m)
+        used += cost
+    kept.reverse()
+    while len(kept) > 1 and not isinstance(kept[0], HumanMessage):
+        kept = kept[1:]
+    return kept
+
+
 def latest_user_text(messages: Sequence[BaseMessage]) -> str:
     for m in reversed(messages):
         if isinstance(m, HumanMessage):

@@ -16,7 +16,7 @@ TEXT_EXTENSIONS = {
     ".rb", ".php", ".sh", ".bat", ".ps1", ".r", ".kt", ".swift", ".scala",
 }
 PDF_EXTENSIONS = {".pdf"}
-EXCEL_EXTENSIONS = {".xlsx", ".xlsm"}  # needs openpyxl; old binary .xls isn't supported
+EXCEL_EXTENSIONS = {".xlsx", ".xlsm", ".xls"}  # openpyxl; old binary .xls needs xlrd
 WORD_EXTENSIONS = {".docx"}  # needs python-docx; old binary .doc isn't supported
 SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | PDF_EXTENSIONS | EXCEL_EXTENSIONS | WORD_EXTENSIONS
 
@@ -39,7 +39,37 @@ def _load_excel(path: Path) -> list[Document]:
         # openpyxl warns about unsupported extras ("Data Validation extension is not
         # supported"); they don't affect the cell values, so keep the logs quiet.
         warnings.simplefilter("ignore", UserWarning)
+        if path.suffix.lower() == ".xls":
+            return _read_xls(path)
         return _read_excel(path)
+
+
+def _read_xls(path: Path) -> list[Document]:
+    """Old binary Excel (97-2003) through xlrd, in the same text form as .xlsx."""
+    import xlrd
+
+    book = xlrd.open_workbook(str(path))
+    docs = []
+    for sheet in book.sheets():
+        rows = []
+        for r in range(sheet.nrows):
+            cells = []
+            for c in range(sheet.ncols):
+                cell = sheet.cell(r, c)
+                value = cell.value
+                if cell.ctype == xlrd.XL_CELL_DATE:
+                    try:
+                        value = xlrd.xldate.xldate_as_datetime(value, book.datemode)
+                    except Exception:
+                        pass
+                cells.append(_cell_text(value if value != "" else None))
+            while cells and not cells[-1]:
+                cells.pop()
+            if any(cells):
+                rows.append(" | ".join(cells))
+        if rows:
+            docs.append(Document(page_content=f"Sheet: {sheet.name}\n" + "\n".join(rows), metadata={"sheet": sheet.name}))
+    return docs
 
 
 def _read_excel(path: Path) -> list[Document]:

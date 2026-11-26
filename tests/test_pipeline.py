@@ -11,7 +11,8 @@ async def _drain(pipeline, thread, message):
 
 
 def test_summarizer_folds_old_messages_into_summary(monkeypatch):
-    monkeypatch.setattr(summarizer_node, "_limits", lambda: (4, 2))
+    # (message threshold, messages kept, token trigger): trigger on message count only.
+    monkeypatch.setattr(summarizer_node, "_limits", lambda: (4, 2, 10**9))
     pipeline = ChatbotPipeline(InMemorySaver())
 
     async def run():

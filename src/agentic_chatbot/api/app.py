@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from agentic_chatbot.api.middleware import RequestContextMiddleware
 from agentic_chatbot.api.routes import chat, documents, history, models, system
+from agentic_chatbot.api.routes import memory as memory_routes
 from agentic_chatbot.components.llm_loader import describe_llm
 from agentic_chatbot.components.memory import MemoryLoader
 from agentic_chatbot.core.context import get_request_id
@@ -30,6 +31,8 @@ from agentic_chatbot.integrations.registry import probe_agents
 from agentic_chatbot.integrations.webhooks import dispatcher
 from agentic_chatbot.mcp.mcp_manager import mcp_manager
 from agentic_chatbot.pipelines.chatbot_pipeline import ChatbotPipeline
+from agentic_chatbot.services.long_term_memory import set_memory_store
+from agentic_chatbot.services.spreadsheets import warm_cache
 from agentic_chatbot.services.store import init_store
 
 logger = logging.getLogger("agentic_chatbot")
@@ -48,11 +51,14 @@ async def lifespan(app: FastAPI):
     if settings.effective_vector_db_uri:  # warm the cached probe so /api/meta never waits on it
         await asyncio.to_thread(check_postgres, settings.effective_vector_db_uri)
     memory = MemoryLoader()
-    checkpointer = await memory.load_memory()
+    checkpointer = await memory.load_memory()   # short-term memory (per conversation)
+    long_term = await memory.load_store()       # long-term memory (across conversations)
+    set_memory_store(long_term, memory.store_backend)
     await mcp_manager.initialize()
 
-    app.state.pipeline = ChatbotPipeline(checkpointer=checkpointer)
+    app.state.pipeline = ChatbotPipeline(checkpointer=checkpointer, store=long_term)
     app.state.memory_backend = memory.backend
+    app.state.store_backend = memory.store_backend
 
     llm = describe_llm()
     if llm["configured"]:
@@ -68,6 +74,8 @@ async def lifespan(app: FastAPI):
                 await stack.enter_async_context(mcp_server.session_manager.run())
                 logger.info("MCP server listening at /mcp")
             probe = asyncio.create_task(probe_agents())  # don't block startup on slow agents
+            # Parse stored spreadsheets in the background (keep a reference so the task isn't garbage-collected).
+            app.state.sheet_warmup = asyncio.create_task(asyncio.to_thread(warm_cache))
             try:
                 yield
             finally:
@@ -75,6 +83,7 @@ async def lifespan(app: FastAPI):
                 app.state.pipeline = None
                 await dispatcher.drain()
     finally:
+        set_memory_store(None)
         await memory.close()
         await store.close()
         logger.info("Shut down cleanly")
@@ -112,7 +121,8 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=f"{settings.app_name} API",
         version=settings.app_version,
-        description="Agentic chatbot: routing between chat, document Q&A (RAG) and a tool-using research agent.",
+        description="Agentic chatbot: routing between chat, document Q&A (RAG) and Deep research, "
+                    "with short-term and long-term memory.",
         lifespan=lifespan,
         docs_url="/docs" if not settings.is_production else "/api/docs",
         redoc_url=None,
@@ -159,6 +169,7 @@ def create_app() -> FastAPI:
     app.include_router(history.router)
     app.include_router(documents.router)
     app.include_router(models.router)
+    app.include_router(memory_routes.router)
 
     integrations = get_integrations()
     if integrations.openai_api.enabled:

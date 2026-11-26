@@ -50,8 +50,11 @@ embeddings:
   # ollama | openai | fake ("fake" is deterministic and only for tests/demo)
   provider: ${EMBEDDING_PROVIDER:-ollama}
   ollama:
-    model: ${OLLAMA_EMBED_MODEL:-qwen3-embedding:4b}
+    # 0.6b: 639 MB, 1024-dim vectors. Changing the model later means re-adding your documents.
+    model: ${OLLAMA_EMBED_MODEL:-qwen3-embedding:0.6b}
     base_url: ${OLLAMA_BASE_URL:-http://127.0.0.1:11434}
+    # Start `ollama serve` when a local Ollama isn't running (development only).
+    autostart: ${OLLAMA_AUTOSTART:-true}
   openai:
     model: ${OPENAI_EMBED_MODEL:-text-embedding-3-small}
     api_key: ${OPENAI_API_KEY}
@@ -75,7 +78,31 @@ agent:
   max_tool_output_chars: 12000
   web_results: 5
 
+research:
+  # Deep research: plan sub-questions, search them in parallel, check for gaps,
+  # then write a cited report. Quick look-ups ("weather in Pune", "who won…")
+  # skip the plan and use the tool agent directly.
+  max_sub_questions: 4    # sub-questions in the first round
+  max_rounds: 2           # 1 = no follow-up round after the gap check
+  results_per_query: 5    # web results kept per sub-question
+  note_chars: 1200        # characters kept from each result
+  # Sources given to the report writer (balanced across sub-questions) and their total text.
+  # Small/free models return an empty report when this is too long (the writer then retries
+  # with half); raise both for large-context models.
+  max_report_sources: 12
+  source_budget_chars: 9000
+
 memory:
-  summary_threshold: 24   # summarise once a thread holds more messages than this
-  keep_last_messages: 10  # messages kept verbatim after summarising
-  context_messages: 12    # recent messages sent to the model each turn
+  # Short-term memory: the conversation in this thread (LangGraph checkpointer).
+  context_tokens: 3000          # most recent messages sent to the model each turn, by token count
+  summary_trigger_tokens: 6000  # summarise older messages once the thread holds more than this
+  summary_threshold: 24         # ...or more messages than this
+  keep_last_messages: 6         # messages kept verbatim after summarising
+  context_messages: 12          # upper bound on messages sent, whatever their size
+
+  # Long-term memory: facts about the user, kept across conversations in the
+  # LangGraph store (Postgres when DB_URI is reachable, in-memory otherwise).
+  long_term: ${LONG_TERM_MEMORY:-on}   # on | off
+  user_id: ${MEMORY_USER_ID:-local}    # one person per server unless clients send their own id
+  max_memories: 200                    # oldest are dropped past this
+  recall_limit: 40                     # memories put in the prompt each turn

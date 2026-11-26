@@ -117,7 +117,8 @@ class _Accumulator:
 class ChatTurn:
     def __init__(self, pipeline: ChatbotPipeline, store: ChatStore, *, conversation_id: str, is_new: bool,
                  message: str | None, model_message: str | None, user_message_id: str | None,
-                 checkpoint_id: str | None = None, source: str = "web"):
+                 checkpoint_id: str | None = None, source: str = "web", mode: str = "auto",
+                 user_id: str | None = None):
         self.pipeline = pipeline
         self.store = store
         self.conversation_id = conversation_id
@@ -127,6 +128,8 @@ class ChatTurn:
         self.user_message_id = user_message_id
         self.checkpoint_id = checkpoint_id
         self.source = source
+        self.mode = mode
+        self.user_id = user_id
         self.assistant_id = f"msg_{uuid.uuid4().hex[:20]}"
 
     def _metadata(self, acc: _Accumulator, started: float, **extra: Any) -> dict[str, Any]:
@@ -140,6 +143,7 @@ class ChatTurn:
             "model": llm["main"]["model"],
             "request_id": get_request_id(),
             "source": self.source,
+            **({"mode": self.mode} if self.mode != "auto" else {}),
             **extra,
         }
 
@@ -160,7 +164,8 @@ class ChatTurn:
 
         async def produce() -> None:
             try:
-                async for ev in self.pipeline.stream(self.conversation_id, self.model_message, self.checkpoint_id):
+                async for ev in self.pipeline.stream(self.conversation_id, self.model_message, self.checkpoint_id,
+                                                     mode=self.mode, user_id=self.user_id):
                     await queue.put(ev)
                 await queue.put(sentinel)
             except asyncio.CancelledError:
@@ -248,7 +253,7 @@ class TurnError(Exception):
 async def prepare_turn(pipeline: ChatbotPipeline, store: ChatStore, *, conversation_id: str | None,
                        message: str | None, regenerate: bool = False,
                        attachments: list[dict] | None = None, source: str = "web",
-                       title: str | None = None) -> ChatTurn:
+                       title: str | None = None, mode: str = "auto", user_id: str | None = None) -> ChatTurn:
     """Create/continue a conversation, store the user message and return a ready ChatTurn."""
     conversation_id = conversation_id or f"c_{uuid.uuid4().hex[:20]}"
     existing = await store.get_conversation(conversation_id)
@@ -261,7 +266,8 @@ async def prepare_turn(pipeline: ChatbotPipeline, store: ChatStore, *, conversat
             raise TurnError(409, "There is no answer to regenerate in this conversation.")
         await store.delete_last_assistant(conversation_id)
         return ChatTurn(pipeline, store, conversation_id=conversation_id, is_new=False, message=None,
-                        model_message=None, user_message_id=None, checkpoint_id=checkpoint_id, source=source)
+                        model_message=None, user_message_id=None, checkpoint_id=checkpoint_id, source=source,
+                        user_id=user_id)
 
     if not message:
         raise TurnError(422, "Message cannot be empty")
@@ -270,12 +276,15 @@ async def prepare_turn(pipeline: ChatbotPipeline, store: ChatStore, *, conversat
 
     model_message = message
     metadata: dict[str, Any] = {"source": source} if source != "web" else {}
+    if mode == "deep_research":
+        metadata["mode"] = mode
     if attachments:
         names = ", ".join(a["name"] for a in attachments)
         model_message += f"\n\n[The user attached these files, now in the knowledge base: {names}]"
         metadata["attachments"] = attachments
 
-    user_id = f"msg_{uuid.uuid4().hex[:20]}"
-    await store.add_message(conversation_id, user_id, "user", message, metadata)
+    user_message_id = f"msg_{uuid.uuid4().hex[:20]}"
+    await store.add_message(conversation_id, user_message_id, "user", message, metadata)
     return ChatTurn(pipeline, store, conversation_id=conversation_id, is_new=not existing,
-                    message=message, model_message=model_message, user_message_id=user_id, source=source)
+                    message=message, model_message=model_message, user_message_id=user_message_id, source=source,
+                    mode=mode, user_id=user_id)

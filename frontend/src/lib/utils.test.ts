@@ -31,6 +31,17 @@ describe('fromStored', () => {
     expect(fromStored({ ...base, metadata: { failed: true } }).status).toBe('error');
     expect(fromStored({ ...base, metadata: {} }).steps).toEqual([]);
   });
+
+  it('keeps the Deep research mode and memory steps of stored messages', () => {
+    const user = fromStored({ ...base, role: 'user', metadata: { mode: 'deep_research' } });
+    expect(user.mode).toBe('deep_research');
+    const memory = fromStored({
+      ...base,
+      metadata: { steps: [{ id: 'memory-save', kind: 'memory', title: 'Updated long-term memory', status: 'done', ts: base.created_at }] },
+    });
+    expect(memory.steps[0].kind).toBe('memory');
+    expect(fromStored(base).mode).toBeUndefined();
+  });
 });
 
 describe('dateGroup', () => {

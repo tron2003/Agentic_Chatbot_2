@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronsUpDown, Library, Monitor, Moon, Pencil, Plus, Search, Sun, Trash2, X } from 'lucide-react';
+import { Brain, Check, ChevronsUpDown, Library, Monitor, Moon, Pencil, Plus, Search, Sun, Trash2, X } from 'lucide-react';
 import type { ThemeChoice } from '@/hooks/useTheme';
 import { useChat } from '@/lib/chat-store';
 import type { Conversation, Integration } from '@/lib/types';
@@ -158,12 +158,14 @@ export function Sidebar({
   open,
   onClose,
   onOpenLibrary,
+  onOpenMemory,
   theme,
   onCycleTheme,
 }: {
   open: boolean;
   onClose: () => void;
   onOpenLibrary: () => void;
+  onOpenMemory: () => void;
   theme: ThemeChoice;
   onCycleTheme: () => void;
 }) {
@@ -276,6 +278,24 @@ export function Sidebar({
             <Library className="size-4 text-route-docs" />
             Document library
             <span className="ml-auto text-[12.5px] text-faint">{documents.length || ''}</span>
+          </button>
+          <button
+            type="button"
+            onClick={onOpenMemory}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[14px] text-ink hover:bg-raised"
+            title={
+              meta?.memory?.long_term === 'postgres'
+                ? 'What the assistant remembers about you, saved in PostgreSQL'
+                : meta?.memory?.long_term === 'off'
+                  ? 'Long-term memory is switched off'
+                  : 'What the assistant remembers about you (kept in server memory until PostgreSQL is reachable)'
+            }
+          >
+            <Brain className="size-4 text-accent" />
+            Memory
+            {meta?.memory?.long_term && meta.memory.long_term !== 'off' && (
+              <span className="ml-auto text-[12px] text-faint">{meta.memory.long_term === 'postgres' ? 'Postgres' : 'in memory'}</span>
+            )}
           </button>
           <Connections />
           <TypingSpeedControl />

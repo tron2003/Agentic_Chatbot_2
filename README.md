@@ -50,7 +50,7 @@ docker compose up -d db           # just the database, from docker-compose.yml
 # .env: DB_URI=postgresql://chatbot:change-me@localhost:5432/chatbot
 ```
 
-For the document library you need an embedding model: `ollama pull qwen3-embedding:4b` (default), or set `EMBEDDING_PROVIDER=openai`.
+For the document library you need an embedding model: `ollama pull qwen3-embedding:0.6b` (default), or set `EMBEDDING_PROVIDER=openai`.
 
 ## Run everything in Docker
 

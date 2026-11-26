@@ -1,13 +1,19 @@
 export type Route = 'chat' | 'rag' | 'agent';
 
+/** "deep_research" forces the Deep research route and a researched, cited report. */
+export type ChatMode = 'auto' | 'deep_research';
+
 export interface Step {
   id: string;
-  kind: 'route' | 'retrieval' | 'thinking' | 'tool';
+  /** memory = long-term memory recalled or saved, or the conversation summarised. */
+  kind: 'route' | 'retrieval' | 'thinking' | 'tool' | 'memory';
   title: string;
   detail?: string;
   status: 'running' | 'done' | 'error';
   tool?: string | null;
   result?: string;
+  /** What a search turned up (title and link), shown as it arrives. */
+  items?: { title: string; url?: string | null }[];
   ts: string;
 }
 
@@ -35,6 +41,7 @@ export interface UIMessage {
   steps: Step[];
   sources: Source[];
   attachments?: Attachment[];
+  mode?: ChatMode;
   status: 'streaming' | 'done' | 'error' | 'stopped';
   error?: string;
   elapsedMs?: number;
@@ -64,6 +71,7 @@ export interface StoredMessage {
     model?: string;
     stopped?: boolean;
     failed?: boolean;
+    mode?: ChatMode;
   };
   created_at: string;
 }
@@ -98,6 +106,10 @@ export interface Meta {
   tools: string[];
   knowledge_base: { backend: string; documents: number };
   persistence: string;
+  /** short_term: where conversation threads are kept; long_term: where facts about the user are kept. */
+  memory?: { short_term: string; long_term: 'postgres' | 'memory' | 'off' | string };
+  /** True when Deep research has something to search (web search or documents). */
+  deep_research?: boolean;
   limits: { max_upload_mb: number; max_message_chars: number };
   integrations?: { items: Integration[]; error: string | null };
 }
@@ -111,7 +123,7 @@ export interface ModelOption {
   id: string;
   label?: string;
   free?: boolean;
-  /** false when the provider says this model can't call tools (Research needs them). */
+  /** false when the provider says this model can't call tools (Deep research quick look-ups need them). */
   tools?: boolean | null;
 }
 
@@ -157,8 +169,24 @@ export type StreamEvent =
   | { type: 'done'; message: StoredMessage }
   | { type: 'error'; code: string; message: string; request_id?: string };
 
+export interface MemoryItem {
+  id: string;
+  content: string;
+  category: string;
+  source?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface MemoryList {
+  enabled: boolean;
+  backend: string;
+  user_id: string;
+  items: MemoryItem[];
+}
+
 export const ROUTE_LABEL: Record<Route, string> = {
   chat: 'Chat',
   rag: 'Documents',
-  agent: 'Research',
+  agent: 'Deep research',
 };

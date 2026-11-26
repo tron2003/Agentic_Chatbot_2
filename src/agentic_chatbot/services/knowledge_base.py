@@ -18,11 +18,13 @@ from typing import Any
 from langchain_core.documents import Document
 
 from agentic_chatbot.components.embedding_loader import embedding_provider
+from agentic_chatbot.components.ollama_service import ensure_ollama
 from agentic_chatbot.components.reranker import get_reranker
 from agentic_chatbot.components.vector_store_loader import get_vector_store, vector_backend
 from agentic_chatbot.core.settings import config_section
 from agentic_chatbot.exception.exception import FileProcessingException, VectorStoreException
 from agentic_chatbot.integrations.webhooks import emit_event
+from agentic_chatbot.services.spreadsheets import is_spreadsheet, remove_copies, save_copy, warm_cache
 from agentic_chatbot.services.store import get_store
 from agentic_chatbot.utils.document_loader import DocumentLoader
 
@@ -35,7 +37,7 @@ def _embedding_hint(exc: Exception, fallback: str) -> str:
     provider = embedding_provider()
     if provider == "ollama":
         block = config_section("embeddings").get("ollama") or {}
-        model = block.get("model", "qwen3-embedding:4b")
+        model = block.get("model", "qwen3-embedding:0.6b")
         base_url = block.get("base_url", "http://127.0.0.1:11434")
         if "not found" in text or "status code: 404" in text or "try pulling" in text:
             return f"The embedding model '{model}' isn't installed in Ollama. Run: ollama pull {model}"
@@ -44,6 +46,14 @@ def _embedding_hint(exc: Exception, fallback: str) -> str:
     if provider == "openai" and ("401" in text or "api key" in text):
         return "OpenAI rejected the embeddings request. Check OPENAI_API_KEY in .env."
     return fallback
+
+
+async def ensure_embeddings_ready() -> None:
+    """Start a local Ollama if it isn't running (development only); a no-op for other providers."""
+    if embedding_provider() != "ollama":
+        return
+    block = config_section("embeddings").get("ollama") or {}
+    await asyncio.to_thread(ensure_ollama, block.get("base_url", "http://127.0.0.1:11434"))
 
 
 class KnowledgeBase:
@@ -88,6 +98,7 @@ class KnowledgeBase:
             chunk.metadata.update({"doc_id": doc_id, "source_name": display_name, "chunk": i})
 
         try:
+            await ensure_embeddings_ready()
             # Opening the store can touch the database: keep it off the event loop.
             store = await asyncio.to_thread(get_vector_store)
             await asyncio.to_thread(store.add_documents, chunks, ids=ids)
@@ -112,6 +123,13 @@ class KnowledgeBase:
             "chunk_ids": ids,
         }
         await get_store().add_document(record)
+        if is_spreadsheet(display_name):
+            # Keep the file itself too, so the agent can calculate with it (services/spreadsheets.py).
+            try:
+                await asyncio.to_thread(save_copy, path, doc_id, display_name)
+                await asyncio.to_thread(warm_cache)
+            except OSError as exc:
+                logger.warning("Couldn't keep a copy of %s for calculations: %s", display_name, exc)
         self._invalidate()
         emit_event("document.ingested", {k: v for k, v in record.items() if k != "chunk_ids"})
         logger.info("Ingested document", extra={"doc_id": doc_id, "chunks": len(chunks)})
@@ -129,6 +147,7 @@ class KnowledgeBase:
             except Exception as exc:
                 logger.warning("Vector delete failed for %s: %s", doc_id, exc)
         await get_store().delete_document(doc_id)
+        await asyncio.to_thread(remove_copies, doc_id)
         self._invalidate()
         emit_event("document.deleted", {"id": doc_id, "name": record["name"]})
         return True
@@ -143,6 +162,7 @@ class KnowledgeBase:
     async def search(self, query: str) -> list[Document]:
         cfg = config_section("rag")
         k = int(cfg.get("k", 6))
+        await ensure_embeddings_ready()
         store = await asyncio.to_thread(get_vector_store)
         try:
             docs = await asyncio.to_thread(

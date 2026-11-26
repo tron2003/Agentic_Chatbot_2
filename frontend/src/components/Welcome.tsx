@@ -23,9 +23,9 @@ export function Welcome({ onOpenLibrary }: { onOpenLibrary: () => void }) {
     chat: 'a direct answer',
     rag: hasDocs ? `${documents.length} ${documents.length === 1 ? 'file' : 'files'}, cited` : 'your files, cited',
     agent: agentNames.length
-      ? `${web ? `${webName}, tools` : 'tools'}, ${agentNames.join(', ')}${web ? '' : ' (no web search)'}`
+      ? `plan, ${web ? webName : 'tools'}, ${agentNames.join(', ')}${web ? '' : ' (no web search)'}`
       : web
-        ? `web search${meta?.web_search_provider ? ` (${meta.web_search_provider})` : ''} and tools`
+        ? `plans, searches ${meta?.web_search_provider ?? 'the web'}, cited report`
         : 'tools (web search off)',
   };
 
@@ -35,7 +35,7 @@ export function Welcome({ onOpenLibrary }: { onOpenLibrary: () => void }) {
       ? { route: 'rag', text: `Summarize the key points of ${documents[0].name}` }
       : { route: 'rag', text: 'Add a document to your library, then ask about it', action: onOpenLibrary },
     web
-      ? { route: 'agent', text: "What's new in the latest LangGraph release?" }
+      ? { route: 'agent', text: 'Research the latest LangGraph release and what changed' }
       : { route: 'agent', text: 'How many days are left until 1 January 2027?' },
   ];
 
@@ -52,8 +52,9 @@ export function Welcome({ onOpenLibrary }: { onOpenLibrary: () => void }) {
         Ask anything. {meta?.app_name ?? APP_NAME_FALLBACK} picks the route.
       </motion.h1>
       <motion.p {...enter(0.25)} className="mt-4 max-w-[58ch] text-[16px] leading-relaxed text-muted text-pretty">
-        Quick questions get a direct answer. Questions about your files search your library and cite it. Anything current goes to
-        research, which uses tools{web ? ' and the web' : ''} before answering.
+        Quick questions get a direct answer. Questions about your files search your library and cite it. Research requests go to
+        Deep research, which plans the question, searches{web ? ' the web' : ''} in parallel and writes a cited report. It
+        remembers what you tell it about yourself across chats.
       </motion.p>
 
       <motion.ul {...enter(0.35)} className="mt-7 divide-y divide-line border-y border-line" aria-label="Example questions">
@@ -70,7 +71,7 @@ export function Welcome({ onOpenLibrary }: { onOpenLibrary: () => void }) {
             >
               <span className={cn('mt-[7px] size-2.5 shrink-0 rounded-full sm:mt-0', DOT[s.route])} />
               <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:gap-4">
-                <span className="shrink-0 text-[13px] font-semibold text-muted sm:w-[5.5rem]">{ROUTE_LABEL[s.route]}</span>
+                <span className="shrink-0 text-[13px] font-semibold text-muted sm:w-[6.75rem]">{ROUTE_LABEL[s.route]}</span>
                 <span className="min-w-0 flex-1 text-[15px] text-ink group-hover:underline group-hover:decoration-line-strong group-hover:underline-offset-4">
                   {s.text}
                 </span>

@@ -6,7 +6,7 @@
  * "Custom Files" filter, and files not in it are hidden from the dialog.
  */
 export const UPLOAD_ACCEPT = [
-  '.pdf', '.docx', '.xlsx', '.xlsm', '.csv', '.tsv', '.txt', '.md', '.markdown', '.rst', '.json', '.jsonl', '.xml',
+  '.pdf', '.docx', '.xlsx', '.xlsm', '.xls', '.csv', '.tsv', '.txt', '.md', '.markdown', '.rst', '.json', '.jsonl', '.xml',
   '.yaml', '.yml', '.toml', '.ini', '.cfg', '.log', '.sql', '.html', '.htm', '.css',
   '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.hpp',
   '.rb', '.php', '.sh', '.bat', '.ps1', '.r', '.kt', '.swift', '.scala',

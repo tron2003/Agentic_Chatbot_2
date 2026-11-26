@@ -71,7 +71,7 @@ export function RouteMap({ highlight, descriptions, labels }: Props) {
       viewBox="0 0 600 220"
       className="h-auto w-full max-w-[600px] overflow-visible"
       role="img"
-      aria-label="Each question enters a router that sends it to Chat, Documents or Research."
+      aria-label="Each question enters a router that sends it to Chat, Documents or Deep research."
     >
       {/* trunk */}
       <motion.path

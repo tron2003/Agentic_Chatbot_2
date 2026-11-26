@@ -23,6 +23,7 @@ os.environ.update(
         "VECTOR_DB_URI": "",
         "TAVILY_API_KEY": "",
         "WEB_SEARCH_PROVIDER": "off",  # never reach the internet from tests
+        "OLLAMA_AUTOSTART": "false",   # never start processes from tests
         "API_KEYS": "",
         "RATE_LIMIT_PER_MINUTE": "1000",
         "DEMO_TOKEN_DELAY": "0",
@@ -41,7 +42,7 @@ def _fresh_state(tmp_path, monkeypatch):
     from agentic_chatbot.core.db import reset_postgres_check
     from agentic_chatbot.core.settings import reset_caches
     from agentic_chatbot.integrations.config import reset_integrations
-    from agentic_chatbot.services import knowledge_base, store
+    from agentic_chatbot.services import knowledge_base, long_term_memory, store
 
     monkeypatch.setenv("WORKSPACE_DIR", str(tmp_path / "workspace"))
     # Never read or write the real model picker choice from tests.
@@ -53,6 +54,7 @@ def _fresh_state(tmp_path, monkeypatch):
     reset_postgres_check()
     limiter.reset()
     store.set_store(None)
+    long_term_memory.set_memory_store(None)
     knowledge_base.get_knowledge_base()._invalidate()
     yield
     reset_caches()

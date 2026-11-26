@@ -24,7 +24,7 @@ def get_embeddings() -> Embeddings:
 
         block = cfg.get("ollama") or {}
         return OllamaEmbeddings(
-            model=block.get("model", "qwen3-embedding:4b"),
+            model=block.get("model", "qwen3-embedding:0.6b"),
             base_url=block.get("base_url", "http://127.0.0.1:11434"),
         )
 

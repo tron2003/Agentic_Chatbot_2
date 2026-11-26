@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, ApiError, setApiKey as persistApiKey, streamChat, type ChatBody } from './api';
-import type { Attachment, Conversation, DocumentInfo, Meta, Step, StoredMessage, UIMessage, UploadResponse } from './types';
+import type {
+  Attachment, ChatMode, Conversation, DocumentInfo, Meta, Step, StoredMessage, UIMessage, UploadResponse,
+} from './types';
 import { charsPerSecond, readTypingSpeed, saveTypingSpeed, Typewriter, type TypingSpeed } from './typing';
 import { fromStored, uid } from './utils';
 
@@ -32,10 +34,11 @@ interface ChatState {
   needsApiKey: boolean;
   typingSpeed: TypingSpeed;
   modelPickerOpen: boolean;
+  memoryPanelOpen: boolean;
 }
 
 interface ChatActions {
-  send: (text: string, attachments?: Attachment[]) => Promise<void>;
+  send: (text: string, attachments?: Attachment[], mode?: ChatMode) => Promise<void>;
   regenerate: () => Promise<void>;
   /** Stops generation; if the answer is already complete, shows the rest of it at once. */
   stop: () => void;
@@ -55,6 +58,9 @@ interface ChatActions {
   refreshMeta: () => Promise<void>;
   setTypingSpeed: (speed: TypingSpeed) => void;
   setModelPickerOpen: (open: boolean) => void;
+  setMemoryPanelOpen: (open: boolean) => void;
+  /** Download one answer of the open conversation as a PDF. */
+  exportPdf: (messageId: string) => Promise<void>;
 }
 
 const Ctx = createContext<(ChatState & ChatActions) | null>(null);
@@ -85,6 +91,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [needsApiKey, setNeedsApiKey] = useState(false);
   const [typingSpeed, setTypingSpeedState] = useState<TypingSpeed>(readTypingSpeed);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const typerRef = useRef<Typewriter | null>(null);
@@ -358,17 +365,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   const send = useCallback(
-    async (text: string, attachments: Attachment[] = []) => {
+    async (text: string, attachments: Attachment[] = [], mode: ChatMode = 'auto') => {
       const message = text.trim();
       if (!message || abortRef.current) return;
       const now = new Date().toISOString();
       const assistantTempId = uid('pending');
       setMessages((ms) => [
         ...ms,
-        { id: uid('user'), role: 'user', content: message, createdAt: now, steps: [], sources: [], attachments, status: 'done' },
+        { id: uid('user'), role: 'user', content: message, createdAt: now, steps: [], sources: [], attachments, mode, status: 'done' },
         { id: assistantTempId, role: 'assistant', content: '', createdAt: now, steps: [], sources: [], status: 'streaming' },
       ]);
-      await runStream({ message, conversation_id: activeRef.current, attachments }, assistantTempId);
+      await runStream({ message, conversation_id: activeRef.current, attachments, mode }, assistantTempId);
     },
     [runStream],
   );
@@ -448,6 +455,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [handleError],
   );
 
+  const exportPdf = useCallback(
+    async (messageId: string) => {
+      const conversationId = activeRef.current;
+      if (!conversationId) return;
+      try {
+        const { filename, blob } = await api.exportPdf(conversationId, messageId);
+        const url = URL.createObjectURL(blob);
+        const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+        a.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+      } catch (err) {
+        handleError(err, "Couldn't create the PDF.");
+      }
+    },
+    [handleError],
+  );
+
   // ── documents ─────────────────────────────────────────────────────────────
   const upload = useCallback(
     async (files: File[]) => {
@@ -508,16 +532,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       meta, serverDown, conversations, conversationsLoaded, activeId, hasMessages, loadingConversation, streaming,
-      documents, toasts, needsApiKey, typingSpeed, modelPickerOpen,
+      documents, toasts, needsApiKey, typingSpeed, modelPickerOpen, memoryPanelOpen,
       send, regenerate, stop, newChat, open, rename, remove, searchConversations, refreshDocuments, upload,
       removeDocument, clearDocuments, exportConversation, toast, dismissToast, submitApiKey, refreshMeta,
-      setTypingSpeed, setModelPickerOpen,
+      setTypingSpeed, setModelPickerOpen, setMemoryPanelOpen, exportPdf,
     }),
     [
       meta, serverDown, conversations, conversationsLoaded, activeId, hasMessages, loadingConversation, streaming,
-      documents, toasts, needsApiKey, typingSpeed, modelPickerOpen, send, regenerate, stop, newChat, open, rename, remove,
-      searchConversations, refreshDocuments, upload, removeDocument, clearDocuments, exportConversation, toast,
-      dismissToast, submitApiKey, refreshMeta, setTypingSpeed,
+      documents, toasts, needsApiKey, typingSpeed, modelPickerOpen, memoryPanelOpen, send, regenerate, stop, newChat,
+      open, rename, remove, searchConversations, refreshDocuments, upload, removeDocument, clearDocuments,
+      exportConversation, toast, dismissToast, submitApiKey, refreshMeta, setTypingSpeed, exportPdf,
     ],
   );
 

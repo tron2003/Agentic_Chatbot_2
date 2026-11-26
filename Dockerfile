@@ -25,7 +25,7 @@ RUN pip install -r requirements.txt
 FROM python:3.12-slim AS runtime
 ARG WITH_MCP=1
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl tini \
+    && apt-get install -y --no-install-recommends curl tini fonts-dejavu-core \
     && if [ "$WITH_MCP" = "1" ]; then apt-get install -y --no-install-recommends nodejs npm; fi \
     && rm -rf /var/lib/apt/lists/*
 

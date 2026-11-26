@@ -28,7 +28,11 @@ async def _save_upload(upload: UploadFile, dest: Path, max_bytes: int) -> int:
         while chunk := await upload.read(1024 * 1024):
             size += len(chunk)
             if size > max_bytes:
-                raise ValueError(f"larger than {max_bytes // (1024 * 1024)} MB")
+                total = upload.size or size
+                raise ValueError(
+                    f"larger than {max_bytes // (1024 * 1024)} MB ({total / (1024 * 1024):.1f} MB). "
+                    "Raise MAX_UPLOAD_MB in .env to allow bigger files"
+                )
             fh.write(chunk)
     return size
 

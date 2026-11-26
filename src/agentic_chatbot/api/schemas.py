@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 
@@ -22,6 +22,9 @@ class ChatRequest(BaseModel):
     )
     regenerate: bool = Field(False, description="Re-answer the latest user message.")
     attachments: list[Attachment] = Field(default_factory=list, max_length=20)
+    mode: Literal["auto", "deep_research"] = Field(
+        "auto", description="auto lets the router choose; deep_research always writes a researched, cited report."
+    )
 
     @field_validator("message")
     @classmethod
@@ -117,3 +120,23 @@ class UploadResponse(BaseModel):
     results: list[UploadResult]
     documents_added: int
     chunks_added: int
+
+
+class MemoryOut(BaseModel):
+    id: str
+    content: str
+    category: str = "fact"
+    source: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class MemoryIn(BaseModel):
+    content: str = Field(..., min_length=2, max_length=300)
+
+
+class MemoryList(BaseModel):
+    enabled: bool
+    backend: str  # postgres | memory | off
+    user_id: str
+    items: list[MemoryOut]

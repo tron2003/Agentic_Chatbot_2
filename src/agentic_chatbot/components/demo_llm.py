@@ -70,6 +70,43 @@ class DemoChatModel(BaseChatModel):
                 tool_calls=[{"name": "Router", "args": {"route": route, "reason": reason}, "id": _id()}],
             )
 
+        if "ResearchPlan" in self.bound_tools:
+            request = human.split("User request:")[-1].strip()[:120]
+            subs = [
+                {"question": request, "query": request[:80]},
+                {"question": f"Latest news: {request}", "query": f"{request[:60]} latest"},
+                {"question": f"Key figures: {request}", "query": f"{request[:60]} statistics"},
+            ]
+            return AIMessage(content="", tool_calls=[{"name": "ResearchPlan", "args": {"sub_questions": subs}, "id": _id()}])
+
+        if "Reflection" in self.bound_tools:
+            return AIMessage(content="", tool_calls=[
+                {"name": "Reflection", "args": {"sufficient": True, "follow_ups": []}, "id": _id()}
+            ])
+
+        if "MemoryOps" in self.bound_tools:
+            said = human.split("User:")[-1].split("Assistant:")[0].strip()
+            add: list[str] = []
+            name = re.search(r"\b(?:my name is|i'm|i am|call me)\s+([A-Z][\w-]+)", said)
+            if name:
+                add.append(f"Name is {name.group(1)}")
+            explicit = re.search(r"\bremember (?:that )?(.+)", said, re.I)
+            if explicit:
+                add.append(explicit.group(1).strip().rstrip("."))
+            return AIMessage(content="", tool_calls=[
+                {"name": "MemoryOps", "args": {"add": add, "update": [], "delete": []}, "id": _id()}
+            ])
+
+        if "research analyst" in system:
+            cited = re.findall(r"^\[(\d+)\] (.+)\nURL: (\S+)", system, re.M)
+            if not cited:
+                return AIMessage(content=_demo("## Research report\n\nNo sources were found, so nothing could be verified."))
+            bullets = "\n".join(f"- {title} [{n}]({url})" for n, title, url in cited[:6])
+            return AIMessage(content=_demo(
+                f"## Research report\n\n**Summary.** Demo mode gathered {len(cited)} sources. "
+                f"A real model would synthesise them here.\n\n### Sources found\n{bullets}"
+            ))
+
         if "conversation title" in human:
             words = re.sub(r"[^\w\s]", "", question.split("Message:")[-1]).split()
             return AIMessage(content=" ".join(words[:5]).capitalize() or "New chat")

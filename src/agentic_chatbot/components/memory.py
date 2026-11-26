@@ -1,4 +1,12 @@
-"""LangGraph checkpointer: Postgres when DB_URI is set and reachable, in-memory otherwise."""
+"""
+Memory backends.
+
+* Short-term memory: the LangGraph checkpointer, one history per conversation thread.
+* Long-term memory: the LangGraph store, facts about the user shared by every thread.
+
+Both use Postgres when DB_URI is set and reachable (one connection pool for the
+two), and fall back to in-memory versions in development otherwise.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +15,8 @@ import logging
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.store.base import BaseStore
+from langgraph.store.memory import InMemoryStore
 
 from agentic_chatbot.core.db import check_postgres, describe_target
 from agentic_chatbot.core.settings import get_settings, pg_conninfo
@@ -17,7 +27,8 @@ logger = logging.getLogger(__name__)
 class MemoryLoader:
     def __init__(self) -> None:
         self._pool = None
-        self.backend = "memory"
+        self.backend = "memory"        # checkpointer (short-term)
+        self.store_backend = "memory"  # store (long-term)
 
     async def load_memory(self) -> BaseCheckpointSaver:
         settings = get_settings()
@@ -40,6 +51,26 @@ class MemoryLoader:
         except Exception as exc:
             logger.error("Postgres checkpointer unavailable (%s); falling back to in-memory", exc)
             return InMemorySaver()
+
+    async def load_store(self) -> BaseStore:
+        """Long-term memory store. Call after ``load_memory`` so it can share the Postgres pool."""
+        if self._pool is not None:
+            from langgraph.store.postgres.aio import AsyncPostgresStore
+
+            try:
+                store = AsyncPostgresStore(self._pool)  # type: ignore[arg-type]
+                await store.setup()  # creates the store tables on first run
+                self.store_backend = "postgres"
+                logger.info("Using Postgres for long-term memory")
+                return store
+            except Exception as exc:
+                if get_settings().is_production:
+                    raise
+                logger.error("Postgres store unavailable (%s); long-term memory is in-process only", exc)
+        elif get_settings().db_uri:
+            logger.warning("Long-term memory is in-process only until Postgres is reachable")
+        self.store_backend = "memory"
+        return InMemoryStore()
 
     async def _postgres(self, uri: str, size: int) -> BaseCheckpointSaver:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver

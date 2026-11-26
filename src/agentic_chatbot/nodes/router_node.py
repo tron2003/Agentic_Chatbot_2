@@ -18,6 +18,7 @@ from agentic_chatbot.logging.logging_utils import ExecutionTimer
 from agentic_chatbot.nodes.events import emit, step
 from agentic_chatbot.prompts.router_prompt import build_router_prompt
 from agentic_chatbot.services.knowledge_base import get_knowledge_base
+from agentic_chatbot.services.spreadsheets import CALC_INTENT, mentions_sheets, sheets_available
 from agentic_chatbot.tools.mcp_tools import get_agent_tools
 from agentic_chatbot.utils.message_builder import conversational, latest_user_text, transcript
 
@@ -40,7 +41,7 @@ _RESEARCH_INTENT = re.compile(
     re.I,
 )
 
-ROUTE_LABELS = {"chat": "Chat", "rag": "Documents", "agent": "Research"}
+ROUTE_LABELS = {"chat": "Chat", "rag": "Documents", "agent": "Deep research"}
 _ROUTE_WORD = re.compile(r"\b(chat|rag|agent)\b", re.I)
 
 
@@ -56,7 +57,14 @@ def heuristic_route(text: str, kb_available: bool) -> Router:
 def apply_research_intent(decision: Router, text: str) -> Router:
     """An explicit request to research or look something up always goes to Research."""
     if decision.route == "chat" and _RESEARCH_INTENT.search(text):
-        return Router(route="agent", reason="You asked to research or look this up, so it goes to Research.")
+        return Router(route="agent", reason="You asked to research or look this up, so it goes to Deep research.")
+    return decision
+
+
+def apply_sheet_intent(decision: Router, text: str, has_sheets: bool) -> Router:
+    """Calculations over the user's spreadsheets need the agent's SQL tool: document search can't add up."""
+    if has_sheets and decision.route != "agent" and CALC_INTENT.search(text) and mentions_sheets(text):
+        return Router(route="agent", reason="Needs calculations over your spreadsheets.")
     return decision
 
 
@@ -74,6 +82,13 @@ async def _plain_route(system: str, prompt: str, config: RunnableConfig) -> Rout
 
 
 async def router_node(state: Chatbot, config: RunnableConfig) -> dict:
+    if state.mode == "deep_research":
+        # The user switched Deep research on: no need to ask the router model.
+        reason = "Deep research is switched on for this message."
+        emit({"type": "route", "route": "agent", "label": ROUTE_LABELS["agent"], "reason": reason})
+        step("route", f"Routed to {ROUTE_LABELS['agent']}", reason)
+        return {"route": "agent"}
+
     with ExecutionTimer("router_node", logger_instance=logger):
         question = latest_user_text(state.messages)
         kb = get_knowledge_base()
@@ -111,6 +126,7 @@ async def router_node(state: Chatbot, config: RunnableConfig) -> dict:
                 decision = Router(route=fallback.route, reason=f"Router model unavailable; keyword match: {fallback.reason}")
 
         decision = apply_research_intent(decision, question)
+        decision = apply_sheet_intent(decision, question, sheets_available())
         route = decision.route
         reason = decision.reason
         if route == "rag" and not kb_available:

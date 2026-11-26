@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from agentic_chatbot.prompts.prompt import memory_sections
+
 AGENT_PROMPT = """You are a research agent with tools. Today's date is {today}.
 
 Your training data ends before today. For anything current (news, releases, prices, sports, people's roles), search first and trust the search results over your memory. Never claim an event hasn't happened if the results say it has.
@@ -17,10 +19,7 @@ How to work
 4. Write the final answer in Markdown. Cite web sources inline as [Title](URL). Say plainly when something could not be verified.
 
 Use the actual tool-calling mechanism; never write tool calls as text or XML.
-
-Conversation summary
-{summary}
-"""
+{memory}"""
 
 FINALIZE_INSTRUCTION = (
     "You've reached the tool budget for this question. Do not call any more tools. "
@@ -40,15 +39,28 @@ FILE_TOOLS_NOTE = (
 _FILE_TOOLS = {"read_file", "read_text_file", "list_directory", "directory_tree", "search_files", "list_allowed_directories"}
 
 
-def build_agent_prompt(tool_names: list[str], summary: str | None) -> str:
+SHEETS_NOTE = (
+    "The user's spreadsheets are available as SQL tables (DuckDB). For any number from them (totals, averages, "
+    "counts, top-N, per month or per party), call query_spreadsheet with one SELECT; never add numbers up yourself "
+    "or estimate. Use the exact table and column names below; text matches are case-sensitive, so use ILIKE for names. "
+    "Show results as a Markdown table with the figures from the query, and say which file they came from.\n"
+    "Tables:\n{schema}"
+)
+
+
+def build_agent_prompt(tool_names: list[str], summary: str | None, user_memories: str | None = None) -> str:
     notes = []
     if "web_search" not in tool_names:
         notes.append(NO_WEB_NOTE)
     if _FILE_TOOLS & set(tool_names):
         notes.append(FILE_TOOLS_NOTE)
+    if "query_spreadsheet" in tool_names:
+        from agentic_chatbot.services.spreadsheets import describe
+
+        notes.append(SHEETS_NOTE.format(schema=describe(max_chars=3500)))
     return AGENT_PROMPT.format(
         today=datetime.now().strftime("%A, %d %B %Y"),
         tools=", ".join(tool_names) or "none",
         tool_notes="".join(f"\n{n}\n" for n in notes),
-        summary=summary or "No earlier conversation.",
+        memory=memory_sections(summary, user_memories),
     )

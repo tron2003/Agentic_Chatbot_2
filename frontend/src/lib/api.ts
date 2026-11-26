@@ -1,6 +1,9 @@
 import type {
+  ChatMode,
   Conversation,
   DocumentInfo,
+  MemoryItem,
+  MemoryList,
   Meta,
   ModelCatalog,
   ModelChoice,
@@ -111,7 +114,25 @@ export const api = {
   setModels: (main: ModelChoice, router: ModelChoice | null) =>
     request<ModelCurrent>('/api/models', { method: 'PUT', body: JSON.stringify({ main, router }) }),
   resetModels: () => request<ModelCurrent>('/api/models', { method: 'DELETE' }),
+  memories: () => request<MemoryList>('/api/memory'),
+  addMemory: (content: string) => request<MemoryItem>('/api/memory', { method: 'POST', body: JSON.stringify({ content }) }),
+  removeMemory: (id: string) => request<void>(`/api/memory/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  clearMemories: () => request<{ deleted: number }>('/api/memory?confirm=true', { method: 'DELETE' }),
   exportUrl: (id: string) => `${API_URL}/api/conversations/${encodeURIComponent(id)}/export`,
+  /** One answer (a Deep research report) as a PDF file. */
+  async exportPdf(conversationId: string, messageId: string): Promise<{ filename: string; blob: Blob }> {
+    const url = `${API_URL}/api/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/pdf`;
+    let res: Response;
+    try {
+      res = await fetch(url, { headers: headers() });
+    } catch {
+      throw new ApiError("Can't reach the server. Is the backend running?", 0, 'NETWORK');
+    }
+    if (!res.ok) throw await toError(res);
+    const disposition = res.headers.get('content-disposition') ?? '';
+    const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'report.pdf';
+    return { filename, blob: await res.blob() };
+  },
   async exportMarkdown(id: string): Promise<{ filename: string; text: string }> {
     const res = await fetch(this.exportUrl(id), { headers: headers() });
     if (!res.ok) throw await toError(res);
@@ -126,6 +147,7 @@ export interface ChatBody {
   conversation_id?: string | null;
   regenerate?: boolean;
   attachments?: { id: string; name: string }[];
+  mode?: ChatMode;
 }
 
 /**

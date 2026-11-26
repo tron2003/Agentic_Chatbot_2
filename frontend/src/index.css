@@ -204,6 +204,65 @@
   }
 }
 
+/* Live activity line ("Reading reuters.com…"): text with a light sweeping
+   across it, and a thin caret while the phrase types itself out. */
+.shimmer-text {
+  background: linear-gradient(
+    100deg,
+    var(--text-muted) 0%,
+    var(--text-muted) 38%,
+    var(--text) 50%,
+    var(--text-muted) 62%,
+    var(--text-muted) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer-sweep 1.8s linear infinite;
+}
+@keyframes shimmer-sweep {
+  from {
+    background-position: 125% 0;
+  }
+  to {
+    background-position: -125% 0;
+  }
+}
+.typing-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.12em;
+  background: var(--text-muted);
+  animation: caret-blink 1s steps(1) infinite;
+}
+@keyframes activity-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.activity-in {
+  animation: activity-in 220ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-text {
+    animation: none;
+    color: var(--text-muted);
+    background: none;
+  }
+  .typing-caret,
+  .activity-in {
+    animation: none;
+  }
+}
+
 /* ── Markdown answer typography ─────────────────────────────────────────── */
 .prose-answer {
   color: var(--text);

@@ -1,8 +1,10 @@
 import { memo, useState } from 'react';
-import { Check, Copy, Paperclip, RotateCcw } from 'lucide-react';
+import { Brain, Check, Copy, FileDown, Loader2, Paperclip, RotateCcw, Telescope } from 'lucide-react';
+import { LiveActivity } from './LiveActivity';
 import { Markdown } from './Markdown';
 import { Sources } from './Sources';
 import { Timeline } from './Timeline';
+import { useChat } from '@/lib/chat-store';
 import { ROUTE_LABEL, type Route, type UIMessage } from '@/lib/types';
 import { cn, formatDuration } from '@/lib/utils';
 
@@ -36,6 +38,11 @@ function UserMessage({ message }: { message: UIMessage }) {
         <div className="rounded-2xl rounded-br-md border border-line bg-raised px-4 py-2.5 text-[15px] leading-relaxed text-ink shadow-lift">
           <p className="whitespace-pre-wrap break-words">{message.content}</p>
         </div>
+        {message.mode === 'deep_research' && (
+          <p className="mt-1.5 flex items-center justify-end gap-1 text-[12px] font-medium text-route-agent">
+            <Telescope className="size-3" /> Deep research
+          </p>
+        )}
         {message.attachments?.length ? (
           <ul className="mt-1.5 flex flex-wrap justify-end gap-1.5">
             {message.attachments.map((a) => (
@@ -53,8 +60,19 @@ function UserMessage({ message }: { message: UIMessage }) {
 
 function AssistantMessage({ message, isLast, onRegenerate, busy }: { message: UIMessage; isLast: boolean; onRegenerate: () => void; busy: boolean }) {
   const [copied, setCopied] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const { setMemoryPanelOpen, exportPdf } = useChat();
   const live = message.status === 'streaming';
   const empty = !message.content.trim();
+  // A Deep research report (has a finished writer step) gets an Export PDF button.
+  const isReport = !empty && message.steps.some((s) => s.id === 'research-write' && s.status !== 'running') && !message.id.startsWith('pending');
+  const memorySaved = message.steps.find((s) => s.id === 'memory-save' && s.status === 'done');
+
+  const exportReport = async () => {
+    setExporting(true);
+    await exportPdf(message.id);
+    setExporting(false);
+  };
 
   const copy = async () => {
     try {
@@ -77,10 +95,7 @@ function AssistantMessage({ message, isLast, onRegenerate, busy }: { message: UI
       {!empty ? (
         <Markdown text={message.content} streaming={live} />
       ) : live ? (
-        <div className="space-y-2 py-1" aria-label="Writing the answer">
-          <div className="h-3 w-3/4 animate-pulse rounded bg-sunk" />
-          <div className="h-3 w-1/2 animate-pulse rounded bg-sunk" />
-        </div>
+        <LiveActivity steps={message.steps} route={message.route} />
       ) : null}
 
       {message.status === 'error' && (
@@ -98,8 +113,37 @@ function AssistantMessage({ message, isLast, onRegenerate, busy }: { message: UI
 
       <Sources items={message.sources} />
 
+      {memorySaved && !live && (
+        <button
+          type="button"
+          onClick={() => setMemoryPanelOpen(true)}
+          title={memorySaved.detail || 'Open memory'}
+          className="activity-in mt-3 inline-flex items-center gap-1.5 rounded-full border border-line bg-raised/70 px-2.5 py-1 text-[12.5px] text-muted transition-colors hover:border-line-strong hover:text-ink"
+        >
+          <Brain className="size-3.5 text-accent" />
+          Memory updated
+        </button>
+      )}
+
       {!live && (
-        <div className="mt-3 flex items-center gap-1 text-faint opacity-100 transition-opacity sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100">
+        <div
+          className={cn(
+            'mt-3 flex flex-wrap items-center gap-1 text-faint transition-opacity',
+            isReport ? 'opacity-100' : 'opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100',
+          )}
+        >
+          {isReport && (
+            <button
+              type="button"
+              onClick={exportReport}
+              disabled={exporting}
+              className="mr-1 inline-flex items-center gap-1.5 rounded-lg border border-route-agent/40 bg-route-agent/10 px-2.5 py-1 text-[12.5px] font-semibold text-route-agent transition-colors hover:bg-route-agent/15 disabled:opacity-60"
+              aria-label="Export this report as a PDF"
+            >
+              {exporting ? <Loader2 className="size-3.5 animate-spin" /> : <FileDown className="size-3.5" />}
+              {exporting ? 'Creating PDF…' : 'Export PDF'}
+            </button>
+          )}
           {!empty && (
             <button type="button" onClick={copy} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12.5px] hover:bg-raised hover:text-ink" aria-label="Copy answer">
               {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}

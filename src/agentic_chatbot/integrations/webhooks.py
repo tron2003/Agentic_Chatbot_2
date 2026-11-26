@@ -32,7 +32,7 @@ from agentic_chatbot.integrations.config import WebhookConfig, get_integrations
 
 logger = logging.getLogger(__name__)
 
-ROUTE_LABEL = {"chat": "Chat", "rag": "Documents", "agent": "Research"}
+ROUTE_LABEL = {"chat": "Chat", "rag": "Documents", "agent": "Deep research"}
 
 
 def render_message(event: str, data: dict[str, Any]) -> str:

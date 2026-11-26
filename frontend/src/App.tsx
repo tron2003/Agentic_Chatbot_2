@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Backdrop } from '@/components/Backdrop';
 import { ChatView } from '@/components/ChatView';
 import { LibraryPanel } from '@/components/LibraryPanel';
+import { MemoryPanel } from '@/components/MemoryPanel';
 import { ModelPicker } from '@/components/ModelPicker';
 import { ApiKeyDialog, SetupBanner, Toasts } from '@/components/Overlays';
 import { Sidebar } from '@/components/Sidebar';
@@ -17,7 +18,7 @@ function focusComposer() {
 }
 
 function Shell() {
-  const { hasMessages, activeId, loadingConversation, newChat, stop, streaming, meta } = useChat();
+  const { hasMessages, activeId, loadingConversation, newChat, stop, streaming, meta, memoryPanelOpen, setMemoryPanelOpen } = useChat();
   const { choice, cycle } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -52,6 +53,7 @@ function Shell() {
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         onOpenLibrary={() => setLibraryOpen(true)}
+        onOpenMemory={() => setMemoryPanelOpen(true)}
         theme={choice}
         onCycleTheme={cycle}
       />
@@ -71,6 +73,7 @@ function Shell() {
         )}
       </main>
       <LibraryPanel open={libraryOpen} onClose={() => setLibraryOpen(false)} />
+      <MemoryPanel open={memoryPanelOpen} onClose={() => setMemoryPanelOpen(false)} />
       <ModelPicker />
       <Toasts />
       <ApiKeyDialog />

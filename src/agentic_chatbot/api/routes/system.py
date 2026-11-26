@@ -14,6 +14,7 @@ from agentic_chatbot.integrations.registry import describe as describe_integrati
 from agentic_chatbot.integrations.registry import probe_agents
 from agentic_chatbot.mcp.mcp_manager import mcp_manager
 from agentic_chatbot.services.knowledge_base import get_knowledge_base
+from agentic_chatbot.services.long_term_memory import long_term_enabled, memory_backend
 from agentic_chatbot.services.store import get_store
 from agentic_chatbot.tools.mcp_tools import get_agent_tools
 from agentic_chatbot.tools.web_tool import web_search_available, web_search_provider_label
@@ -43,6 +44,7 @@ async def ready(request: Request):
         "checks": checks,
         "llm_error": llm["error"],
         "memory_backend": getattr(request.app.state, "memory_backend", "unknown"),
+        "long_term_memory_backend": memory_backend(),
         "store_backend": get_store().backend,
         "vector_backend": get_knowledge_base().backend,
         "mcp": mcp_manager.status,
@@ -51,7 +53,7 @@ async def ready(request: Request):
 
 
 @router.get("/api/meta")
-async def meta():
+async def meta(request: Request):
     """What this deployment can do; used by the UI. Contains no secrets."""
     settings = get_settings()
     llm = describe_llm()
@@ -70,6 +72,12 @@ async def meta():
         "tools": [t.name for t in get_agent_tools()],
         "knowledge_base": {"backend": kb.backend, "documents": len(await kb.document_names())},
         "persistence": get_store().backend,
+        "memory": {
+            # short-term: the conversation thread (LangGraph checkpointer); long-term: facts across chats (store)
+            "short_term": getattr(request.app.state, "memory_backend", "unknown"),
+            "long_term": memory_backend() if long_term_enabled() else "off",
+        },
+        "deep_research": web_search_available() or bool(await kb.document_names()),
         "limits": {"max_upload_mb": settings.max_upload_mb, "max_message_chars": settings.max_message_chars},
         "integrations": describe_integrations(),
     }

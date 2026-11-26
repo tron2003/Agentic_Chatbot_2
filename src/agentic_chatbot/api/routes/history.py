@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 
 from agentic_chatbot.api.schemas import ConversationDetail, ConversationOut, RenameRequest
 from agentic_chatbot.api.security import require_api_key
+from agentic_chatbot.core.settings import get_settings
+from agentic_chatbot.services.report_pdf import render_report_pdf, safe_filename
 from agentic_chatbot.services.store import get_store
 
 logger = logging.getLogger(__name__)
@@ -89,6 +92,40 @@ async def export_conversation(conversation_id: str):
         "\n".join(lines),
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{slug}.md"'},
+    )
+
+
+@router.get("/conversations/{conversation_id}/messages/{message_id}/pdf")
+async def export_message_pdf(conversation_id: str, message_id: str):
+    """One answer (normally a Deep research report) as a PDF with its sources."""
+    store = get_store()
+    conv = await store.get_conversation(conversation_id)
+    if not conv:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found.")
+    messages = await store.get_messages(conversation_id)
+    idx = next((i for i, m in enumerate(messages) if m["id"] == message_id and m["role"] == "assistant"), None)
+    if idx is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Answer not found.")
+    msg = messages[idx]
+    question = next((m["content"] for m in reversed(messages[:idx]) if m["role"] == "user"), None)
+    meta = msg.get("metadata") or {}
+    created = msg.get("created_at")
+    try:
+        when = datetime.fromisoformat(str(created)).astimezone().strftime("%d %B %Y, %H:%M") if created else None
+    except ValueError:
+        when = None
+    try:
+        data = await asyncio.to_thread(
+            render_report_pdf, conv["title"], msg["content"], meta.get("sources") or [],
+            question=question, model=meta.get("model"), app_name=get_settings().app_name, created_at=when,
+        )
+    except ImportError as exc:
+        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED,
+                            "PDF export needs the fpdf2 and markdown packages: pip install -r requirements.txt") from exc
+    return Response(
+        data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename(conv["title"])}"'},
     )
 
 

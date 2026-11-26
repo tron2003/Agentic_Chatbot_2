@@ -160,13 +160,17 @@ def _format(answer: str | None, results: list[dict], provider: str) -> tuple[str
     return header + "\n\n".join(blocks) + footer, sources
 
 
-@tool(response_format="content_and_artifact")
-async def web_search(query: str) -> tuple[str, list[dict]]:
-    """Search the web for current information: news, recent events, releases, prices, sports,
-    people's current roles, or any fact that may have changed. Input is a focused search query."""
+async def search_results(query: str) -> tuple[str | None, str | None, list[dict], str]:
+    """Run a search through the provider chain.
+
+    Returns ``(provider, answer, results, problem)``: the provider that answered
+    (None if none did), the search engine's own summary if any, the raw results
+    (title, url, content) and a description of what went wrong when empty.
+    Shared by the ``web_search`` tool and Deep research.
+    """
     providers = web_search_providers()
     if not providers:
-        return "Web search is not configured on this server.", []
+        return None, None, [], "Web search is not configured on this server."
 
     problems: list[str] = []
     for provider in providers:
@@ -179,7 +183,18 @@ async def web_search(query: str) -> tuple[str, list[dict]]:
         if results:
             if problems:
                 logger.info("Web search fell back to %s", provider)
-            return _format(answer, results, provider)
+            return provider, answer, [r for r in results if r.get("url")], ""
         problems.append(f"{PROVIDER_LABELS[provider]} found nothing")
+    return None, None, [], "No results: " + "; ".join(problems) + "."
 
-    return "No results: " + "; ".join(problems) + ". Try a different or broader query.", []
+
+@tool(response_format="content_and_artifact")
+async def web_search(query: str) -> tuple[str, list[dict]]:
+    """Search the web for current information: news, recent events, releases, prices, sports,
+    people's current roles, or any fact that may have changed. Input is a focused search query."""
+    provider, answer, results, problem = await search_results(query)
+    if provider is None:
+        if not web_search_providers():
+            return problem, []
+        return problem + " Try a different or broader query.", []
+    return _format(answer, results, provider)

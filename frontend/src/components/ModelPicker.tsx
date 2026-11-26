@@ -290,7 +290,7 @@ export function ModelPicker() {
                                 </span>
                                 {m.free && <span className="rounded-full bg-route-agent/15 px-2 py-0.5 text-[11.5px] font-semibold text-route-agent">free</span>}
                                 {m.tools === false && (
-                                  <span className="rounded-full bg-route-docs/15 px-2 py-0.5 text-[11.5px] font-semibold text-route-docs" title="Can't call tools, so Research can't search">
+                                  <span className="rounded-full bg-route-docs/15 px-2 py-0.5 text-[11.5px] font-semibold text-route-docs" title="Can't call tools, so quick look-ups in Deep research can't use the calculator or search tools">
                                     no tools
                                   </span>
                                 )}
@@ -313,7 +313,8 @@ export function ModelPicker() {
                       {selectedOption?.tools === false && (
                         <p className="mt-2 flex items-start gap-2 text-[13px] text-route-docs">
                           <CircleAlert className="mt-0.5 size-4 shrink-0" />
-                          This model can't call tools, so Research answers won't be able to search the web or use the calculator.
+                          This model can't call tools, so quick look-ups in Deep research won't be able to use tools. Full research
+                          reports still work, because the app runs those searches itself.
                         </p>
                       )}
 

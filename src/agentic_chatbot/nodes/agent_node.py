@@ -28,7 +28,7 @@ from agentic_chatbot.nodes.events import emit, step
 from agentic_chatbot.prompts.agent_prompt import FINALIZE_INSTRUCTION, build_agent_prompt
 from agentic_chatbot.services.knowledge_base import get_knowledge_base
 from agentic_chatbot.tools.mcp_tools import get_agent_tools
-from agentic_chatbot.utils.message_builder import conversational, message_text, strip_think
+from agentic_chatbot.utils.message_builder import context_window, message_text, strip_think
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,8 @@ TOOL_TITLES = {
     "current_datetime": "Checking the date and time",
     "search_knowledge_base": "Searching your documents",
     "read_pdf": "Reading a PDF",
+    "describe_spreadsheets": "Reading your spreadsheets",
+    "query_spreadsheet": "Calculating from your spreadsheet",
 }
 
 
@@ -75,6 +77,11 @@ async def _run_tool(tools: dict[str, BaseTool], call: dict[str, Any], timeout: f
                        status=getattr(result, "status", "success"))
 
 
+def _preview_items(found: list[dict], limit: int = 6) -> list[dict]:
+    """What a search turned up, for the live activity line and source chips in the timeline."""
+    return [{"title": (s.get("title") or "")[:120], "url": s.get("url")} for s in found[:limit] if s.get("url") or s.get("title")]
+
+
 def _sources_from(message: ToolMessage) -> list[dict]:
     artifact = message.artifact
     if isinstance(artifact, list):
@@ -95,8 +102,10 @@ async def agent_node(state: Chatbot, config: RunnableConfig) -> dict:
         titles = {**TOOL_TITLES, **tool_titles()}
         llm = get_llm("main").bind_tools(tools)
 
-        history: list[BaseMessage] = [SystemMessage(content=build_agent_prompt(list(by_name), state.summary))]
-        history.extend(conversational(state.messages, int(config_section("memory").get("context_messages", 12))))
+        history: list[BaseMessage] = [
+            SystemMessage(content=build_agent_prompt(list(by_name), state.summary, state.user_memories))
+        ]
+        history.extend(context_window(state.messages))
 
         sources: list[dict] = []
         seen_urls: set[str] = set()
@@ -134,7 +143,7 @@ async def agent_node(state: Chatbot, config: RunnableConfig) -> dict:
                 summary = f"{len(found)} result{'s' if len(found) != 1 else ''}" if found else preview[:280]
                 step("tool", titles.get(call["name"], f"Used {call['name']}"), _describe_args(call.get("args") or {}),
                      step_id=call["id"], status="error" if result.status == "error" else "done",
-                     tool=call["name"], result=summary)
+                     tool=call["name"], result=summary, items=_preview_items(found))
             if sources:
                 emit({"type": "sources", "items": sources})
             history.extend(results)

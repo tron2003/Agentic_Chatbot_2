@@ -1,9 +1,9 @@
 import { forwardRef, memo, useCallback, useImperativeHandle, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
-import { ArrowUp, CircleAlert, CircleCheck, Loader2, Paperclip, Square, Upload, X } from 'lucide-react';
+import { ArrowUp, CircleAlert, CircleCheck, Loader2, Paperclip, Square, Telescope, Upload, X } from 'lucide-react';
 import { useChat } from '@/lib/chat-store';
 import type { Attachment } from '@/lib/types';
 import { UPLOAD_ACCEPT, UPLOAD_TYPES_LABEL } from '@/lib/uploads';
-import { cn } from '@/lib/utils';
+import { cn, formatBytes } from '@/lib/utils';
 
 interface Pending {
   key: string;
@@ -25,8 +25,11 @@ export const Composer = memo(
     { placeholder = 'Ask a question', autoFocus },
     ref,
   ) {
-    const { send, stop, streaming, upload, meta, serverDown } = useChat();
+    const { send, stop, streaming, upload, meta, serverDown, toast } = useChat();
     const [text, setText] = useState('');
+    // Deep research for the next message: plan, search in parallel, write a cited report.
+    const [deep, setDeep] = useState(false);
+    const deepAvailable = meta?.deep_research ?? meta?.web_search ?? true;
     const [files, setFiles] = useState<Pending[]>([]);
     const [dragging, setDragging] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -58,8 +61,25 @@ export const Composer = memo(
       },
     }));
 
+    const maxMb = meta?.limits.max_upload_mb ?? 25;
     const addFiles = useCallback(
-      async (list: File[]) => {
+      async (all: File[]) => {
+        if (!all.length) return;
+        // Files over the server's limit fail straight away, with the reason, instead of uploading for nothing.
+        const tooBig = all.filter((f) => f.size > maxMb * 1024 * 1024);
+        const list = all.filter((f) => f.size <= maxMb * 1024 * 1024);
+        if (tooBig.length) {
+          setFiles((prev) => [
+            ...prev,
+            ...tooBig.map((f, i) => ({
+              key: `${Date.now()}-big-${i}-${f.name}`,
+              name: f.name,
+              status: 'error' as const,
+              error: `${f.name} is ${formatBytes(f.size)}; the limit is ${maxMb} MB (MAX_UPLOAD_MB in .env).`,
+            })),
+          ]);
+          tooBig.forEach((f) => toast(`${f.name} is ${formatBytes(f.size)}, over the ${maxMb} MB upload limit.`, 'error'));
+        }
         if (!list.length) return;
         const batch: Pending[] = list.map((f, i) => ({ key: `${Date.now()}-${i}-${f.name}`, name: f.name, status: 'uploading' }));
         setFiles((prev) => [...prev, ...batch]);
@@ -75,7 +95,7 @@ export const Composer = memo(
         );
         textareaRef.current?.focus();
       },
-      [upload],
+      [upload, maxMb, toast],
     );
 
     const uploading = files.some((f) => f.status === 'uploading');
@@ -86,10 +106,12 @@ export const Composer = memo(
     const submit = () => {
       if (!canSend) return;
       const message = text;
+      const mode = deep && deepAvailable ? 'deep_research' : 'auto';
       setText('');
       setFiles([]);
+      setDeep(false); // one report at a time; switch it on again for the next one
       requestAnimationFrame(resize);
-      void send(message, ready);
+      void send(message, ready, mode);
     };
 
     const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -166,6 +188,17 @@ export const Composer = memo(
             ))}
           </ul>
         )}
+        {files.some((f) => f.status === 'error') && (
+          <ul className="space-y-0.5 px-4 pt-1.5" aria-live="polite">
+            {files
+              .filter((f) => f.status === 'error')
+              .map((f) => (
+                <li key={`err-${f.key}`} className="text-[12.5px] leading-snug text-danger">
+                  {f.error}
+                </li>
+              ))}
+          </ul>
+        )}
 
         <label htmlFor="composer-input" className="sr-only">
           Message
@@ -181,7 +214,7 @@ export const Composer = memo(
             resize();
           }}
           onKeyDown={onKeyDown}
-          placeholder={serverDown ? 'Waiting for the server…' : placeholder}
+          placeholder={serverDown ? 'Waiting for the server…' : deep ? 'What should I research? I’ll plan, search and write a cited report.' : placeholder}
           className="block max-h-60 min-h-[56px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-[15.5px] leading-relaxed text-ink outline-none placeholder:text-faint"
         />
 
@@ -220,6 +253,29 @@ export const Composer = memo(
               {ready.length > 0 && !uploading && (
                 <span className="rounded-full bg-route-docs/15 px-1.5 text-[11.5px] font-semibold text-route-docs">{ready.length}</span>
               )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeep((d) => !d)}
+              disabled={!deepAvailable}
+              aria-pressed={deep}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[13px] font-medium',
+                'transition-[background-color,border-color,color,transform] duration-150 ease-out',
+                'hover:-translate-y-px hover:shadow-lift active:translate-y-0 active:scale-[0.96]',
+                'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none',
+                deep
+                  ? 'border-route-agent/60 bg-route-agent/12 text-route-agent'
+                  : 'border-line bg-raised/60 text-muted hover:border-line-strong hover:bg-raised hover:text-ink',
+              )}
+              title={
+                deepAvailable
+                  ? 'Deep research: plans sub-questions, searches them in parallel, checks for gaps and writes a cited report. Takes longer than a normal answer.'
+                  : 'Deep research needs web search (TAVILY_API_KEY or the ddgs package) or documents in your library.'
+              }
+            >
+              <Telescope className={cn('size-4', deep && 'text-route-agent')} />
+              <span className="hidden sm:inline">Deep research</span>
             </button>
             {tooLong && (
               <span className="text-[12px] text-danger">

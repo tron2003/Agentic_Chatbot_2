@@ -25,6 +25,7 @@ export function fromStored(m: StoredMessage): UIMessage {
     steps: meta.steps ?? [],
     sources: meta.sources ?? [],
     attachments: meta.attachments,
+    mode: meta.mode,
     status: meta.stopped ? 'stopped' : meta.failed ? 'error' : 'done',
     elapsedMs: meta.elapsed_ms,
     model: meta.model,

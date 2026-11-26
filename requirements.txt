@@ -33,6 +33,11 @@ psycopg-pool==3.3.3
 pypdf==6.20.1
 openpyxl==3.1.5        # .xlsx uploads
 python-docx==1.2.0     # .docx uploads
+xlrd==2.0.2            # old .xls uploads
+pandas==3.1.1          # spreadsheet calculations
+duckdb==2.0.1          # read-only SQL over spreadsheets
+fpdf2==2.9.0           # research report PDF export
+Markdown==3.11.4       # research report PDF export
 
 # Web search without a key (fallback when TAVILY_API_KEY is empty or Tavily fails)
 ddgs==9.16.1

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { ArrowUpRight, Brain, Cable, FileSpreadsheet, FileText, Library, Plus } from 'lucide-react';
+import { ArrowUpRight, Brain, Cable, FileSpreadsheet, FileText, Folder, Library, Plus } from 'lucide-react';
 import { Composer, type ComposerHandle } from './Composer';
 import { RouteMap } from './RouteMap';
 import { api } from '@/lib/api';
@@ -56,7 +56,8 @@ function SideLink({ onClick, children }: { onClick: () => void; children: ReactN
  * column shows what it knows, the library and the connections, each one click away.
  */
 export function Welcome({ onOpenLibrary }: { onOpenLibrary: () => void }) {
-  const { meta, documents, conversations, conversationsLoaded, send, open, setMemoryPanelOpen, setConnectionsOpen } = useChat();
+  // scopedDocuments here = the general library (files outside projects), which is what a chat from home can read.
+  const { meta, scopedDocuments: documents, conversations, conversationsLoaded, send, open, setMemoryPanelOpen, setConnectionsOpen, projects, openProject } = useChat();
   const composer = useRef<ComposerHandle>(null);
   const reduced = useReducedMotion();
   const now = useClock();
@@ -78,6 +79,7 @@ export function Welcome({ onOpenLibrary }: { onOpenLibrary: () => void }) {
   }, [meta, memoryOn]);
 
   const name = useMemo(() => nameFromMemories(memories ?? []), [memories]);
+  const projectName = (id: string) => projects.find((p) => p.id === id)?.name;
   const recent = conversations.slice(0, 6);
   const facts = (memories ?? []).filter((m) => !/^(name is|goes by)/i.test(m.content)).slice(0, 4);
   const nameIsFact = !!name && facts.some((m) => m.content.startsWith(name));
@@ -186,8 +188,11 @@ export function Welcome({ onOpenLibrary }: { onOpenLibrary: () => void }) {
                     >
                       <span className="text-[13px] tabular-nums text-muted">{boardTime(c.updated_at, now)}</span>
                       <span className="h-7 w-[6px] rounded-full" style={{ background: route ? LINE[route] : 'var(--line-strong)' }} aria-hidden />
-                      <span className="truncate text-[15px] font-medium text-ink group-hover:underline group-hover:decoration-line-strong group-hover:underline-offset-4">
+                      <span className="min-w-0 truncate text-[15px] font-medium text-ink group-hover:underline group-hover:decoration-line-strong group-hover:underline-offset-4">
                         {c.title}
+                        {c.project_id && projectName(c.project_id) ? (
+                          <span className="ml-2 text-[12.5px] font-normal text-faint">in {projectName(c.project_id)}</span>
+                        ) : null}
                       </span>
                       <span className="hidden text-[12.5px] sm:block" style={{ color: route ? LINE[route] : 'var(--text-faint)' }}>
                         {route ? ROUTE_LABEL[route] : `${c.message_count} ${c.message_count === 1 ? 'message' : 'messages'}`}
@@ -228,6 +233,24 @@ export function Welcome({ onOpenLibrary }: { onOpenLibrary: () => void }) {
                   Nothing yet. Tell me your name, what you're working on, or how you like answers, and I'll keep it in mind in every chat.
                 </p>
               )}
+            </Side>
+          )}
+
+          {projects.length > 0 && (
+            <Side icon={<Folder className="size-4 text-route-docs" />} title="Projects">
+              <ul className="space-y-1">
+                {projects.slice(0, 4).map((p) => (
+                  <li key={p.id}>
+                    <button type="button" onClick={() => openProject(p.id)} className="group flex w-full items-baseline gap-2 text-left text-[14px] text-ink">
+                      <span className="min-w-0 flex-1 truncate group-hover:underline group-hover:underline-offset-4">{p.name}</span>
+                      <span className="shrink-0 text-[12.5px] text-faint">
+                        {p.chat_count} {p.chat_count === 1 ? 'chat' : 'chats'}, {p.document_count} {p.document_count === 1 ? 'file' : 'files'}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {projects.length > 4 && <li className="text-[12.5px] text-faint">and {projects.length - 4} more in the sidebar</li>}
+              </ul>
             </Side>
           )}
 

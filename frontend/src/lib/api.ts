@@ -11,6 +11,7 @@ import type {
   ModelCatalog,
   ModelChoice,
   ModelCurrent,
+  Project,
   ServerDraft,
   StoredMessage,
   StreamEvent,
@@ -108,11 +109,22 @@ export const api = {
     }),
   remove: (id: string) => request<void>(`/api/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   documents: () => request<DocumentInfo[]>('/api/documents'),
+  projects: () => request<Project[]>('/api/projects'),
+  createProject: (name: string, instructions = '') =>
+    request<Project>('/api/projects', { method: 'POST', body: JSON.stringify({ name, instructions }) }),
+  updateProject: (id: string, patch: { name?: string; instructions?: string }) =>
+    request<Project>(`/api/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  deleteProject: (id: string) =>
+    request<{ deleted: string; chats: number; documents: number }>(`/api/projects/${encodeURIComponent(id)}?confirm=true`, {
+      method: 'DELETE',
+    }),
   removeDocument: (id: string) => request<void>(`/api/documents/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   clearDocuments: () => request<{ deleted: number }>('/api/documents?confirm=true', { method: 'DELETE' }),
-  upload: (files: File[]) => {
+  /** Upload into the general library, or into a project when ``projectId`` is given. */
+  upload: (files: File[], projectId?: string | null) => {
     const form = new FormData();
     files.forEach((f) => form.append('files', f, f.name));
+    if (projectId) form.append('project_id', projectId);
     return request<UploadResponse>('/api/documents', { method: 'POST', body: form });
   },
   models: (refresh = false) => request<ModelCatalog>(`/api/models${refresh ? '?refresh=true' : ''}`),
@@ -181,6 +193,8 @@ export interface ChatBody {
   regenerate?: boolean;
   attachments?: { id: string; name: string }[];
   mode?: ChatMode;
+  /** Start a new conversation inside this project. */
+  project_id?: string | null;
 }
 
 /**

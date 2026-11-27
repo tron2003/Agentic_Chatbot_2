@@ -21,6 +21,7 @@ from agentic_chatbot.components.embedding_loader import embedding_provider
 from agentic_chatbot.components.ollama_service import ensure_ollama
 from agentic_chatbot.components.reranker import get_reranker
 from agentic_chatbot.components.vector_store_loader import get_vector_store, vector_backend
+from agentic_chatbot.core.scope import current_scope
 from agentic_chatbot.core.settings import config_section
 from agentic_chatbot.exception.exception import FileProcessingException, VectorStoreException
 from agentic_chatbot.integrations.webhooks import emit_event
@@ -56,27 +57,41 @@ async def ensure_embeddings_ready() -> None:
     await asyncio.to_thread(ensure_ollama, block.get("base_url", "http://127.0.0.1:11434"))
 
 
+def _vector_filter(store: Any, doc_ids: frozenset[str]) -> Any:
+    """Restrict a similarity search to these documents (PGVector takes a dict, the in-memory store a function)."""
+    if hasattr(store, "collection_name"):  # PGVector
+        return {"doc_id": {"$in": sorted(doc_ids)}}
+    return lambda doc: doc.metadata.get("doc_id") in doc_ids
+
+
 class KnowledgeBase:
+    """The document library. Inside a chat turn everything is limited to the turn's project (core/scope.py)."""
+
     def __init__(self) -> None:
-        self._names_cache: list[str] | None = None
+        self._docs_cache: list[dict] | None = None
 
     @property
     def backend(self) -> str:
         return vector_backend()
 
     def _invalidate(self) -> None:
-        self._names_cache = None
+        self._docs_cache = None
+
+    async def documents(self) -> list[dict]:
+        """Documents visible to the current turn: its project's, or all of them outside a turn."""
+        if self._docs_cache is None:
+            self._docs_cache = await get_store().list_documents()
+        scope = current_scope()
+        return [d for d in self._docs_cache if scope is None or scope.allows(d["id"])]
 
     async def document_names(self) -> list[str]:
-        if self._names_cache is None:
-            docs = await get_store().list_documents()
-            self._names_cache = [d["name"] for d in docs]
-        return self._names_cache
+        return [d["name"] for d in await self.documents()]
 
     async def has_documents(self) -> bool:
         return bool(await self.document_names())
 
-    async def ingest_file(self, path: Path, display_name: str, size_bytes: int) -> dict[str, Any]:
+    async def ingest_file(self, path: Path, display_name: str, size_bytes: int,
+                          project_id: str | None = None) -> dict[str, Any]:
         cfg = config_section("rag")
         loader = DocumentLoader(int(cfg.get("chunk_size", 1000)), int(cfg.get("chunk_overlap", 150)))
         try:
@@ -121,6 +136,7 @@ class KnowledgeBase:
             "size_bytes": size_bytes,
             "chunks": len(chunks),
             "chunk_ids": ids,
+            "project_id": project_id,
         }
         await get_store().add_document(record)
         if is_spreadsheet(display_name):
@@ -162,8 +178,12 @@ class KnowledgeBase:
     async def search(self, query: str) -> list[Document]:
         cfg = config_section("rag")
         k = int(cfg.get("k", 6))
+        scope = current_scope()
+        if scope is not None and not scope.doc_ids:
+            return []  # this project (or the general library) has no documents
         await ensure_embeddings_ready()
         store = await asyncio.to_thread(get_vector_store)
+        extra = {"filter": _vector_filter(store, scope.doc_ids)} if scope is not None else {}
         try:
             docs = await asyncio.to_thread(
                 store.max_marginal_relevance_search,
@@ -171,6 +191,7 @@ class KnowledgeBase:
                 k=k if not cfg.get("rerank") else max(k * 2, 10),
                 fetch_k=int(cfg.get("fetch_k", 24)),
                 lambda_mult=float(cfg.get("lambda_mult", 0.6)),
+                **extra,
             )
         except Exception as exc:
             raise VectorStoreException(

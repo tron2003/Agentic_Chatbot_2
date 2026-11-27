@@ -1,8 +1,8 @@
-import { Download, Library, PanelLeft } from 'lucide-react';
+import { ChevronRight, Download, FolderOpen, Library, PanelLeft } from 'lucide-react';
 import { useChat } from '@/lib/chat-store';
 
 export function TopBar({ sidebarOpen, onToggleSidebar, onOpenLibrary }: { sidebarOpen: boolean; onToggleSidebar: () => void; onOpenLibrary: () => void }) {
-  const { activeId, conversations, exportConversation, documents } = useChat();
+  const { activeId, conversations, exportConversation, scopedDocuments: documents, activeProject, openProject } = useChat();
   const title = conversations.find((c) => c.id === activeId)?.title;
 
   return (
@@ -18,6 +18,18 @@ export function TopBar({ sidebarOpen, onToggleSidebar, onOpenLibrary }: { sideba
             <PanelLeft className="size-[18px]" />
           </button>
         )}
+        {activeProject && activeId ? (
+          <button
+            type="button"
+            onClick={() => openProject(activeProject.id)}
+            className="glass inline-flex min-w-0 max-w-[40%] shrink-0 items-center gap-1.5 rounded-xl border border-line px-2.5 py-1.5 text-[13.5px] text-muted hover:text-ink"
+            title={`Back to ${activeProject.name}`}
+          >
+            <FolderOpen className="size-4 shrink-0 text-route-docs" />
+            <span className="truncate">{activeProject.name}</span>
+            <ChevronRight className="size-3.5 shrink-0 text-faint" />
+          </button>
+        ) : null}
         {title ? (
           <h1 className="glass min-w-0 truncate rounded-xl border border-line px-3 py-1.5 text-[14px] font-semibold text-ink">{title}</h1>
         ) : null}

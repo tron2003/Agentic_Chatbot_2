@@ -126,7 +126,7 @@ class Settings(BaseSettings):
 
     environment: str = Field("development", description="development | production")
     app_name: str = "Reittiä"  # shown in the UI and to connected apps; APP_NAME in .env overrides it
-    app_version: str = "2.5.0"
+    app_version: str = "2.6.0"
 
     # Paths
     config_path: Path = PROJECT_ROOT / "config" / "config.yaml"

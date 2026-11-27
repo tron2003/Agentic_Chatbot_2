@@ -35,6 +35,7 @@ async def _prepare_turn(body: ChatRequest, request: Request) -> ChatTurn:
             regenerate=body.regenerate,
             attachments=[a.model_dump() for a in body.attachments],
             mode=body.mode,
+            project_id=body.project_id,
         )
     except TurnError as exc:
         raise HTTPException(exc.status, exc.message)

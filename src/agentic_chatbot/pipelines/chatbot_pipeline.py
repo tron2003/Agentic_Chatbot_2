@@ -34,6 +34,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
+from agentic_chatbot.core.scope import Scope, set_scope
 from agentic_chatbot.entity.chat_state import Chatbot
 from agentic_chatbot.nodes.agent_node import CLEARED, after_agent, agent_node, approval_node
 from agentic_chatbot.nodes.chat_node import chat_node
@@ -151,11 +152,14 @@ class ChatbotPipeline:
     async def stream(self, thread_id: str, message: str | Sequence[BaseMessage] | None = None,
                      checkpoint_id: str | None = None, *, mode: str = "auto",
                      user_id: str | None = None, interactive: bool = False,
-                     resume: Any = None) -> AsyncIterator[dict[str, Any]]:
+                     resume: Any = None, scope: Scope | None = None) -> AsyncIterator[dict[str, Any]]:
         """Run one turn. ``message`` is the new user text, a full message history
         (used for stateless OpenAI-compatible calls), or None to resume a checkpoint.
         ``mode="deep_research"`` forces the Deep research route and a full report.
-        ``interactive=True`` lets the agent pause for approval; ``resume`` continues a paused run."""
+        ``interactive=True`` lets the agent pause for approval; ``resume`` continues a paused run.
+        ``scope`` limits documents, spreadsheets and instructions to the conversation's project."""
+        if scope is not None:
+            set_scope(scope)  # the project this turn belongs to; every node and tool reads it (core/scope.py)
         config = self._config(thread_id, checkpoint_id, user_id, interactive)
         mode = mode if mode in ("auto", "deep_research") else "auto"
         if resume is not None:

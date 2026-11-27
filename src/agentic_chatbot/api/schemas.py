@@ -25,6 +25,10 @@ class ChatRequest(BaseModel):
     mode: Literal["auto", "deep_research"] = Field(
         "auto", description="auto lets the router choose; deep_research always writes a researched, cited report."
     )
+    project_id: str | None = Field(
+        None, pattern=r"^[A-Za-z0-9_\-]{1,64}$",
+        description="Start the new conversation in this project. Ignored for existing conversations.",
+    )
 
     @field_validator("message")
     @classmethod
@@ -96,6 +100,7 @@ class ConversationOut(BaseModel):
     updated_at: str
     message_count: int
     last_route: str | None = None  # route of the latest answer (chat | rag | agent), for the home board
+    project_id: str | None = None
 
 
 class ConversationDetail(BaseModel):
@@ -122,6 +127,35 @@ class DocumentOut(BaseModel):
     size_bytes: int
     chunks: int
     created_at: str
+    project_id: str | None = None
+
+
+class ProjectIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    instructions: str = Field("", max_length=8000)
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        v = " ".join(v.split())
+        if not v:
+            raise ValueError("Give the project a name")
+        return v
+
+
+class ProjectPatch(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=80)
+    instructions: str | None = Field(None, max_length=8000)
+
+
+class ProjectOut(BaseModel):
+    id: str
+    name: str
+    instructions: str = ""
+    created_at: str
+    updated_at: str
+    chat_count: int = 0
+    document_count: int = 0
 
 
 class UploadResult(BaseModel):

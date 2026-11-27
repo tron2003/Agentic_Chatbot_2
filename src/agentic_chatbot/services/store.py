@@ -28,6 +28,9 @@ from agentic_chatbot.exception.exception import DatabaseException
 logger = logging.getLogger(__name__)
 
 
+NO_PROJECT = "none"  # list filter: only conversations or documents outside every project
+
+
 def utcnow() -> datetime:
     return datetime.now(UTC)
 
@@ -46,11 +49,12 @@ class ChatStore(ABC):
 
     # conversations
     @abstractmethod
-    async def create_conversation(self, conversation_id: str, title: str) -> dict: ...
+    async def create_conversation(self, conversation_id: str, title: str, project_id: str | None = None) -> dict: ...
     @abstractmethod
     async def get_conversation(self, conversation_id: str) -> dict | None: ...
     @abstractmethod
-    async def list_conversations(self, query: str | None = None, limit: int = 100) -> list[dict]: ...
+    async def list_conversations(self, query: str | None = None, limit: int = 100, project: str | None = None) -> list[dict]:
+        """``project``: None = every conversation, NO_PROJECT = only those outside projects, else one project's."""
     @abstractmethod
     async def rename_conversation(self, conversation_id: str, title: str) -> bool: ...
     @abstractmethod
@@ -78,6 +82,18 @@ class ChatStore(ABC):
     @abstractmethod
     async def delete_all_documents(self) -> int: ...
 
+    # projects
+    @abstractmethod
+    async def create_project(self, project_id: str, name: str, instructions: str = "") -> dict: ...
+    @abstractmethod
+    async def get_project(self, project_id: str) -> dict | None: ...
+    @abstractmethod
+    async def list_projects(self) -> list[dict]: ...
+    @abstractmethod
+    async def update_project(self, project_id: str, name: str | None = None, instructions: str | None = None) -> dict | None: ...
+    @abstractmethod
+    async def delete_project(self, project_id: str) -> bool: ...
+
 
 # ─── In-memory ──────────────────────────────────────────────────────────────
 
@@ -89,13 +105,15 @@ class MemoryStore(ChatStore):
         self._convs: dict[str, dict] = {}
         self._msgs: dict[str, list[dict]] = {}
         self._docs: dict[str, dict] = {}
+        self._projects: dict[str, dict] = {}
         self._lock = asyncio.Lock()
 
-    async def create_conversation(self, conversation_id: str, title: str) -> dict:
+    async def create_conversation(self, conversation_id: str, title: str, project_id: str | None = None) -> dict:
         async with self._lock:
             if conversation_id not in self._convs:
                 now = utcnow()
-                self._convs[conversation_id] = {"id": conversation_id, "title": title, "created_at": now, "updated_at": now}
+                self._convs[conversation_id] = {"id": conversation_id, "title": title, "created_at": now, "updated_at": now,
+                                                "project_id": project_id}
                 self._msgs[conversation_id] = []
             return self._public(self._convs[conversation_id])
 
@@ -109,14 +127,18 @@ class MemoryStore(ChatStore):
             "updated_at": _iso(conv["updated_at"]),
             "message_count": len(msgs),
             "last_route": (last or {}).get("metadata", {}).get("route"),
+            "project_id": conv.get("project_id"),
         }
 
     async def get_conversation(self, conversation_id: str) -> dict | None:
         conv = self._convs.get(conversation_id)
         return self._public(conv) if conv else None
 
-    async def list_conversations(self, query: str | None = None, limit: int = 100) -> list[dict]:
+    async def list_conversations(self, query: str | None = None, limit: int = 100, project: str | None = None) -> list[dict]:
         convs = sorted(self._convs.values(), key=lambda c: c["updated_at"], reverse=True)
+        if project is not None:
+            want = None if project == NO_PROJECT else project
+            convs = [c for c in convs if c.get("project_id") == want]
         if query:
             q = query.lower()
             convs = [
@@ -180,7 +202,7 @@ class MemoryStore(ChatStore):
         return {"conversations": len(self._convs), "messages": total, "documents": len(self._docs)}
 
     async def add_document(self, doc: dict) -> None:
-        self._docs[doc["id"]] = {**doc, "created_at": _iso(doc.get("created_at") or utcnow())}
+        self._docs[doc["id"]] = {"project_id": None, **doc, "created_at": _iso(doc.get("created_at") or utcnow())}
 
     async def list_documents(self) -> list[dict]:
         return sorted(deepcopy(list(self._docs.values())), key=lambda d: d["created_at"], reverse=True)
@@ -196,6 +218,42 @@ class MemoryStore(ChatStore):
         n = len(self._docs)
         self._docs.clear()
         return n
+
+    def _project(self, p: dict) -> dict:
+        return {
+            **{k: v for k, v in p.items() if k not in ("created_at", "updated_at")},
+            "created_at": _iso(p["created_at"]),
+            "updated_at": _iso(p["updated_at"]),
+            "chat_count": sum(1 for c in self._convs.values() if c.get("project_id") == p["id"]),
+            "document_count": sum(1 for d in self._docs.values() if d.get("project_id") == p["id"]),
+        }
+
+    async def create_project(self, project_id: str, name: str, instructions: str = "") -> dict:
+        now = utcnow()
+        self._projects[project_id] = {"id": project_id, "name": name, "instructions": instructions,
+                                      "created_at": now, "updated_at": now}
+        return self._project(self._projects[project_id])
+
+    async def get_project(self, project_id: str) -> dict | None:
+        p = self._projects.get(project_id)
+        return self._project(p) if p else None
+
+    async def list_projects(self) -> list[dict]:
+        return [self._project(p) for p in sorted(self._projects.values(), key=lambda p: p["updated_at"], reverse=True)]
+
+    async def update_project(self, project_id: str, name: str | None = None, instructions: str | None = None) -> dict | None:
+        p = self._projects.get(project_id)
+        if not p:
+            return None
+        if name is not None:
+            p["name"] = name
+        if instructions is not None:
+            p["instructions"] = instructions
+        p["updated_at"] = utcnow()
+        return self._project(p)
+
+    async def delete_project(self, project_id: str) -> bool:
+        return self._projects.pop(project_id, None) is not None
 
 
 # ─── Postgres ───────────────────────────────────────────────────────────────
@@ -229,6 +287,18 @@ _SCHEMA = [
         chunk_ids   JSONB NOT NULL DEFAULT '[]'::jsonb,
         created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )""",
+    """
+    CREATE TABLE IF NOT EXISTS chatbot_projects (
+        id            TEXT PRIMARY KEY,
+        name          TEXT NOT NULL,
+        instructions  TEXT NOT NULL DEFAULT '',
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""",
+    # Added in 2.6 (projects): existing rows stay outside any project.
+    "ALTER TABLE chatbot_conversations ADD COLUMN IF NOT EXISTS project_id TEXT",
+    "ALTER TABLE chatbot_documents ADD COLUMN IF NOT EXISTS project_id TEXT",
+    "CREATE INDEX IF NOT EXISTS idx_chatbot_conversations_project ON chatbot_conversations (project_id)",
 ]
 
 
@@ -292,12 +362,13 @@ class PostgresStore(ChatStore):
             "updated_at": _iso(row["updated_at"]),
             "message_count": int(row.get("message_count") or 0),
             "last_route": row.get("last_route"),
+            "project_id": row.get("project_id"),
         }
 
-    async def create_conversation(self, conversation_id: str, title: str) -> dict:
+    async def create_conversation(self, conversation_id: str, title: str, project_id: str | None = None) -> dict:
         await self._fetch(
-            "INSERT INTO chatbot_conversations (id, title) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING",
-            (conversation_id, title),
+            "INSERT INTO chatbot_conversations (id, title, project_id) VALUES (%s, %s, %s) ON CONFLICT (id) DO NOTHING",
+            (conversation_id, title, project_id),
         )
         conv = await self.get_conversation(conversation_id)
         assert conv is not None
@@ -313,27 +384,26 @@ class PostgresStore(ChatStore):
         )
         return self._conv(rows[0]) if rows else None
 
-    async def list_conversations(self, query: str | None = None, limit: int = 100) -> list[dict]:
+    async def list_conversations(self, query: str | None = None, limit: int = 100, project: str | None = None) -> list[dict]:
+        where, params = [], []
+        if project == NO_PROJECT:
+            where.append("c.project_id IS NULL")
+        elif project is not None:
+            where.append("c.project_id = %s")
+            params.append(project)
         if query:
             like = f"%{query}%"
-            rows = await self._fetch(
-                """SELECT c.*, (SELECT COUNT(*) FROM chatbot_messages m WHERE m.conversation_id = c.id) AS message_count,
+            where.append("(c.title ILIKE %s OR EXISTS (SELECT 1 FROM chatbot_messages m "
+                         "WHERE m.conversation_id = c.id AND m.content ILIKE %s))")
+            params += [like, like]
+        rows = await self._fetch(
+            f"""SELECT c.*, (SELECT COUNT(*) FROM chatbot_messages m WHERE m.conversation_id = c.id) AS message_count,
                       (SELECT m.metadata->>'route' FROM chatbot_messages m WHERE m.conversation_id = c.id
                        AND m.role = 'assistant' ORDER BY m.created_at DESC LIMIT 1) AS last_route
-                   FROM chatbot_conversations c
-                   WHERE c.title ILIKE %s OR EXISTS (
-                       SELECT 1 FROM chatbot_messages m WHERE m.conversation_id = c.id AND m.content ILIKE %s)
-                   ORDER BY c.updated_at DESC LIMIT %s""",
-                (like, like, limit),
-            )
-        else:
-            rows = await self._fetch(
-                """SELECT c.*, (SELECT COUNT(*) FROM chatbot_messages m WHERE m.conversation_id = c.id) AS message_count,
-                      (SELECT m.metadata->>'route' FROM chatbot_messages m WHERE m.conversation_id = c.id
-                       AND m.role = 'assistant' ORDER BY m.created_at DESC LIMIT 1) AS last_route
-                   FROM chatbot_conversations c ORDER BY c.updated_at DESC LIMIT %s""",
-                (limit,),
-            )
+               FROM chatbot_conversations c {"WHERE " + " AND ".join(where) if where else ""}
+               ORDER BY c.updated_at DESC LIMIT %s""",
+            (*params, limit),
+        )
         return [self._conv(r) for r in rows]
 
     async def rename_conversation(self, conversation_id: str, title: str) -> bool:
@@ -389,9 +459,10 @@ class PostgresStore(ChatStore):
 
     async def add_document(self, doc: dict) -> None:
         await self._fetch(
-            """INSERT INTO chatbot_documents (id, name, file_type, size_bytes, chunks, chunk_ids)
-               VALUES (%s, %s, %s, %s, %s, %s::jsonb)""",
-            (doc["id"], doc["name"], doc["file_type"], doc["size_bytes"], doc["chunks"], json.dumps(doc["chunk_ids"])),
+            """INSERT INTO chatbot_documents (id, name, file_type, size_bytes, chunks, chunk_ids, project_id)
+               VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)""",
+            (doc["id"], doc["name"], doc["file_type"], doc["size_bytes"], doc["chunks"], json.dumps(doc["chunk_ids"]),
+             doc.get("project_id")),
         )
 
     async def list_documents(self) -> list[dict]:
@@ -409,6 +480,45 @@ class PostgresStore(ChatStore):
     async def delete_all_documents(self) -> int:
         rows = await self._fetch("DELETE FROM chatbot_documents RETURNING id")
         return len(rows)
+
+    # projects
+    @staticmethod
+    def _project_row(row: dict) -> dict:
+        return {
+            "id": row["id"], "name": row["name"], "instructions": row["instructions"] or "",
+            "created_at": _iso(row["created_at"]), "updated_at": _iso(row["updated_at"]),
+            "chat_count": int(row.get("chat_count") or 0), "document_count": int(row.get("document_count") or 0),
+        }
+
+    _PROJECT_SQL = """SELECT p.*,
+        (SELECT COUNT(*) FROM chatbot_conversations c WHERE c.project_id = p.id) AS chat_count,
+        (SELECT COUNT(*) FROM chatbot_documents d WHERE d.project_id = p.id) AS document_count
+        FROM chatbot_projects p"""
+
+    async def create_project(self, project_id: str, name: str, instructions: str = "") -> dict:
+        await self._fetch("INSERT INTO chatbot_projects (id, name, instructions) VALUES (%s, %s, %s)",
+                          (project_id, name, instructions))
+        project = await self.get_project(project_id)
+        assert project is not None
+        return project
+
+    async def get_project(self, project_id: str) -> dict | None:
+        rows = await self._fetch(self._PROJECT_SQL + " WHERE p.id = %s", (project_id,))
+        return self._project_row(rows[0]) if rows else None
+
+    async def list_projects(self) -> list[dict]:
+        return [self._project_row(r) for r in await self._fetch(self._PROJECT_SQL + " ORDER BY p.updated_at DESC")]
+
+    async def update_project(self, project_id: str, name: str | None = None, instructions: str | None = None) -> dict | None:
+        rows = await self._fetch(
+            """UPDATE chatbot_projects SET name = COALESCE(%s, name), instructions = COALESCE(%s, instructions),
+               updated_at = NOW() WHERE id = %s RETURNING id""",
+            (name, instructions, project_id),
+        )
+        return await self.get_project(project_id) if rows else None
+
+    async def delete_project(self, project_id: str) -> bool:
+        return bool(await self._fetch("DELETE FROM chatbot_projects WHERE id = %s RETURNING id", (project_id,)))
 
 
 # ─── singleton ──────────────────────────────────────────────────────────────

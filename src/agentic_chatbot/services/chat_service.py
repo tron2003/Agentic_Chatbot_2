@@ -32,6 +32,7 @@ from langchain_core.messages import HumanMessage
 
 from agentic_chatbot.components.llm_loader import describe_llm, get_llm
 from agentic_chatbot.core.context import get_request_id
+from agentic_chatbot.core.scope import build_scope
 from agentic_chatbot.exception.exception import CustomException
 from agentic_chatbot.integrations.webhooks import emit_event
 from agentic_chatbot.pipelines.chatbot_pipeline import ChatbotPipeline
@@ -141,7 +142,8 @@ class ChatTurn:
     def __init__(self, pipeline: ChatbotPipeline, store: ChatStore, *, conversation_id: str, is_new: bool,
                  message: str | None, model_message: str | None, user_message_id: str | None,
                  checkpoint_id: str | None = None, source: str = "web", mode: str = "auto",
-                 user_id: str | None = None, resume: dict[str, str] | None = None, prior: dict | None = None):
+                 user_id: str | None = None, resume: dict[str, str] | None = None, prior: dict | None = None,
+                 project_id: str | None = None):
         self.pipeline = pipeline
         self.store = store
         self.conversation_id = conversation_id
@@ -155,6 +157,7 @@ class ChatTurn:
         self.user_id = user_id
         self.resume = resume
         self.prior = prior
+        self.project_id = project_id
         self.interactive = source == "web"
         self.assistant_id = prior["id"] if prior else f"msg_{uuid.uuid4().hex[:20]}"
 
@@ -206,9 +209,10 @@ class ChatTurn:
 
         async def produce() -> None:
             try:
+                scope = await build_scope(self.project_id)
                 async for ev in self.pipeline.stream(self.conversation_id, self.model_message, self.checkpoint_id,
                                                      mode=self.mode, user_id=self.user_id,
-                                                     interactive=self.interactive, resume=self.resume):
+                                                     interactive=self.interactive, resume=self.resume, scope=scope):
                     await queue.put(ev)
                 await queue.put(sentinel)
             except asyncio.CancelledError:
@@ -298,7 +302,8 @@ class TurnError(Exception):
 async def prepare_turn(pipeline: ChatbotPipeline, store: ChatStore, *, conversation_id: str | None,
                        message: str | None, regenerate: bool = False,
                        attachments: list[dict] | None = None, source: str = "web",
-                       title: str | None = None, mode: str = "auto", user_id: str | None = None) -> ChatTurn:
+                       title: str | None = None, mode: str = "auto", user_id: str | None = None,
+                       project_id: str | None = None) -> ChatTurn:
     """Create/continue a conversation, store the user message and return a ready ChatTurn."""
     conversation_id = conversation_id or f"c_{uuid.uuid4().hex[:20]}"
     existing = await store.get_conversation(conversation_id)
@@ -312,13 +317,16 @@ async def prepare_turn(pipeline: ChatbotPipeline, store: ChatStore, *, conversat
         await store.delete_last_assistant(conversation_id)
         return ChatTurn(pipeline, store, conversation_id=conversation_id, is_new=False, message=None,
                         model_message=None, user_message_id=None, checkpoint_id=checkpoint_id, source=source,
-                        user_id=user_id)
+                        user_id=user_id, project_id=existing.get("project_id"))
 
     if not message:
         raise TurnError(422, "Message cannot be empty")
     if not existing:
-        await store.create_conversation(conversation_id, title or fallback_title(message))
+        if project_id and not await store.get_project(project_id):
+            raise TurnError(404, "That project doesn't exist anymore.")
+        await store.create_conversation(conversation_id, title or fallback_title(message), project_id)
     else:
+        project_id = existing.get("project_id")  # a conversation never changes project mid-way
         await drop_pending_approval(pipeline, store, conversation_id)
 
     model_message = message
@@ -334,7 +342,7 @@ async def prepare_turn(pipeline: ChatbotPipeline, store: ChatStore, *, conversat
     await store.add_message(conversation_id, user_message_id, "user", message, metadata)
     return ChatTurn(pipeline, store, conversation_id=conversation_id, is_new=not existing,
                     message=message, model_message=model_message, user_message_id=user_message_id, source=source,
-                    mode=mode, user_id=user_id)
+                    mode=mode, user_id=user_id, project_id=project_id)
 
 
 DROPPED_NOTE = "_Not run: a new message was sent before this action was approved._"
@@ -370,7 +378,8 @@ async def drop_pending_approval(pipeline: ChatbotPipeline, store: ChatStore, con
 async def prepare_resume(pipeline: ChatbotPipeline, store: ChatStore, *, conversation_id: str, message_id: str,
                          decisions: dict[str, str], user_id: str | None = None) -> ChatTurn:
     """Continue a paused answer with the user's decisions ({call id: "approve" | "decline"})."""
-    if not await store.get_conversation(conversation_id):
+    conv = await store.get_conversation(conversation_id)
+    if not conv:
         raise TurnError(404, "Conversation not found.")
     waiting = await pipeline.pending_approval(conversation_id)
     msg = await _paused_message(store, conversation_id, message_id)
@@ -380,4 +389,4 @@ async def prepare_resume(pipeline: ChatbotPipeline, store: ChatStore, *, convers
     clean = {i: ("approve" if str(decisions.get(i, "")).lower() == "approve" else "decline") for i in ids}
     return ChatTurn(pipeline, store, conversation_id=conversation_id, is_new=False, message=None,
                     model_message=None, user_message_id=None, source="web", user_id=user_id,
-                    resume=clean, prior=msg)
+                    resume=clean, prior=msg, project_id=conv.get("project_id"))

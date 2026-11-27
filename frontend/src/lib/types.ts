@@ -82,6 +82,19 @@ export interface Conversation {
   message_count: number;
   /** Route of the latest answer, for the home board. */
   last_route?: Route | null;
+  /** The project this chat belongs to, or null. */
+  project_id?: string | null;
+}
+
+/** A workspace with its own chats, files and instructions. */
+export interface Project {
+  id: string;
+  name: string;
+  instructions: string;
+  created_at: string;
+  updated_at: string;
+  chat_count: number;
+  document_count: number;
 }
 
 export interface StoredMessage {
@@ -113,6 +126,7 @@ export interface DocumentInfo {
   size_bytes: number;
   chunks: number;
   created_at: string;
+  project_id?: string | null;
 }
 
 export interface UploadResponse {

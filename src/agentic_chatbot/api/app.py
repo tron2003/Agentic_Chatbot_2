@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from agentic_chatbot.api.middleware import RequestContextMiddleware
-from agentic_chatbot.api.routes import chat, connections, documents, history, models, system
+from agentic_chatbot.api.routes import chat, connections, documents, history, models, projects, system
 from agentic_chatbot.api.routes import memory as memory_routes
 from agentic_chatbot.components.llm_loader import describe_llm
 from agentic_chatbot.components.memory import MemoryLoader
@@ -171,6 +171,7 @@ def create_app() -> FastAPI:
     app.include_router(models.router)
     app.include_router(memory_routes.router)
     app.include_router(connections.router)
+    app.include_router(projects.router)
 
     integrations = get_integrations()
     if integrations.openai_api.enabled:

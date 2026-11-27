@@ -31,8 +31,10 @@ async def _forget_thread(request: Request, conversation_id: str) -> None:
 
 
 @router.get("/conversations", response_model=list[ConversationOut])
-async def list_conversations(q: str | None = Query(None, max_length=200), limit: int = Query(100, ge=1, le=500)):
-    return await get_store().list_conversations(q.strip() if q else None, limit)
+async def list_conversations(q: str | None = Query(None, max_length=200), limit: int = Query(100, ge=1, le=500),
+                             project: str | None = Query(None, max_length=64,
+                                                         description="A project id, or 'none' for chats outside projects")):
+    return await get_store().list_conversations(q.strip() if q else None, limit, project)
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationDetail)

@@ -80,6 +80,7 @@ def load() -> dict[str, Any]:
 
 
 def save(data: dict[str, Any]) -> None:
+    global _cache
     path = connections_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     body = {**{k: data.get(k) or {} for k in ("servers", "file_servers", "tools")},
@@ -88,6 +89,8 @@ def save(data: dict[str, Any]) -> None:
     with _lock:
         tmp.write_text(json.dumps(body, indent=2, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, path)  # atomic, so a reader never sees half a file
+        # Two saves can land in the same file-time tick on Windows, so never trust the mtime cache after our own write.
+        _cache = None
 
 
 # ── tool settings ────────────────────────────────────────────────────────────

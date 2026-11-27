@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.6.0 (branch feature/connector-hub, 2026-11-27)
+
+### Added: Projects
+- A project is a workspace with its own chats, files and instructions (`chatbot_projects` table; `project_id` added to conversations and documents, existing rows stay outside projects).
+- `core/scope.py`: each chat turn sets its project scope once in a context variable. The router, document search (a `doc_id` filter on PGVector or the in-memory store), the agent's knowledge-base tool, spreadsheet SQL and every prompt read it, so a project chat sees only that project's files and follows its instructions, and chats outside projects never see a project's files. Long-term memory stays shared.
+- API: `/api/projects` (list with chat and file counts, create, get, rename or change instructions, delete with `?confirm=true`, which removes the project's chats, their threads and its documents). `project_id` on `POST /api/chat/stream` starts a chat in a project (a conversation never changes project); `project_id` form field on uploads; `?project=<id>|none` filters on `/api/conversations` and `/api/documents`.
+- UI: Projects in the sidebar (project chats live on their project's page), a project page with editable name, instructions, files and chats, a breadcrumb back to the project from its chats, project tags on the home board, and the library and attachments scoped to the current project.
+
+### Fixed
+- `config/connections.json` could be read back stale right after a save on Windows (two writes in the same file-time tick); a save now clears the cache.
+
+### Tests
+- `tests/test_projects.py` (6): counts and renaming, chats and documents kept apart, an empty project not routing to documents, instructions in prompts, spreadsheets scoped to the project, unknown project and cascading delete. pytest 134 passed (also on the Windows dev machine), vitest 44, tsc, ruff and the build clean.
+
 ## 2.5.0 (branch feature/connector-hub, 2026-11-27)
 
 ### Added: approval before actions

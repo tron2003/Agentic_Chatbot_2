@@ -17,10 +17,23 @@ How to respond
 {memory}"""
 
 
+def project_section() -> str:
+    """The project this chat belongs to and its instructions (empty outside projects)."""
+    from agentic_chatbot.core.scope import current_scope
+
+    scope = current_scope()
+    if scope is None or not scope.project_id:
+        return ""
+    text = f"\nProject\nThis chat is part of the user's project \"{scope.name}\". Its documents are the only ones you can search here.\n"
+    if scope.instructions.strip():
+        text += f"Project instructions from the user (follow them in every answer):\n{scope.instructions.strip()}\n"
+    return text
+
+
 def memory_sections(summary: str | None, user_memories: str | None) -> str:
-    """Long-term memory (facts about the user) and short-term summary (earlier in this chat)."""
+    """Project instructions, long-term memory (facts about the user) and short-term summary (earlier in this chat)."""
     about = user_memories or "Nothing yet."
-    return (
+    return project_section() + (
         "\nWhat you know about the user (long-term memory, from earlier conversations)\n"
         f"{about}\n"
         "Use these when relevant; don't recite them unprompted.\n"

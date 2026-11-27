@@ -81,12 +81,16 @@ def warm_cache() -> int:
 
 
 def _files() -> list[tuple[Path, str]]:
+    """Kept spreadsheet files (``<doc_id>.<ext>``) the current turn may use (see core/scope.py)."""
+    from agentic_chatbot.core.scope import current_scope
+
+    scope = current_scope()
     folder = data_dir()
     if not folder.is_dir():
         return []
     out = []
     for p in sorted(folder.iterdir()):
-        if p.suffix.lower() in SHEET_EXTENSIONS:
+        if p.suffix.lower() in SHEET_EXTENSIONS and (scope is None or scope.allows(p.stem)):
             meta = p.with_suffix(".json")
             name = p.name
             if meta.is_file():

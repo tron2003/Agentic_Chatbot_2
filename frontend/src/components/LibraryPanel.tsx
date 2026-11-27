@@ -29,7 +29,8 @@ async function filesFromDrop(e: DragEvent): Promise<File[]> {
 }
 
 export function LibraryPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { documents, upload, removeDocument, clearDocuments, refreshDocuments, meta } = useChat();
+  // Inside a project this is the project's files; elsewhere the general library (files outside projects).
+  const { scopedDocuments: documents, upload, removeDocument, refreshDocuments, meta, activeProject } = useChat();
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -80,7 +81,7 @@ export function LibraryPanel({ open, onClose }: { open: boolean; onClose: () => 
             <div className="flex items-start justify-between gap-4 px-5 pb-2 pt-5">
               <div>
                 <h2 id="library-title" className="text-[19px] font-[780] tracking-[-0.01em] text-ink">
-                  Document library
+                  {activeProject ? `${activeProject.name} files` : 'Document library'}
                 </h2>
                 <p className="mt-1 text-[14px] leading-relaxed text-muted">
                   Ask about anything in these files from any conversation. Answers cite the passages they use.
@@ -172,7 +173,7 @@ export function LibraryPanel({ open, onClose }: { open: boolean; onClose: () => 
                 </span>
                 {confirmClear ? (
                   <span className="flex items-center gap-2">
-                    <button type="button" onClick={() => { void clearDocuments(); setConfirmClear(false); }} className="rounded-lg px-2.5 py-1 font-semibold text-danger hover:bg-danger/10">
+                    <button type="button" onClick={() => { void Promise.all(documents.map((d) => removeDocument(d.id))); setConfirmClear(false); }} className="rounded-lg px-2.5 py-1 font-semibold text-danger hover:bg-danger/10">
                       Remove all
                     </button>
                     <button type="button" onClick={() => setConfirmClear(false)} className="rounded-lg px-2.5 py-1 text-muted hover:text-ink">

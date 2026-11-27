@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Brain, Cable, Check, ChevronsUpDown, Library, Monitor, Moon, Pencil, Plus, Search, Sun, Trash2, X } from 'lucide-react';
+import { Brain, Cable, Check, ChevronsUpDown, Folder, FolderOpen, FolderPlus, Library, Monitor, Moon, Pencil, Plus, Search, Sun, Trash2, X } from 'lucide-react';
 import type { ThemeChoice } from '@/hooks/useTheme';
 import { useChat } from '@/lib/chat-store';
 import type { Conversation, Integration } from '@/lib/types';
@@ -144,6 +144,106 @@ function Connections() {
   );
 }
 
+/** Projects: workspaces with their own chats, files and instructions. */
+function Projects({ onNavigate }: { onNavigate: () => void }) {
+  const { projects, activeProjectId, openProject, createProject } = useChat();
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (adding) input.current?.focus();
+  }, [adding]);
+
+  const create = async () => {
+    const n = name.trim();
+    if (!n) {
+      setAdding(false);
+      return;
+    }
+    setBusy(true);
+    const p = await createProject(n);
+    setBusy(false);
+    if (p) {
+      setName('');
+      setAdding(false);
+      onNavigate();
+    }
+  };
+
+  return (
+    <section className="mb-2" aria-label="Projects">
+      <div className="flex items-center justify-between px-3 pb-1 pt-2">
+        <h2 className="text-[12.5px] font-semibold text-faint">Projects</h2>
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] text-muted hover:bg-raised hover:text-ink"
+        >
+          <FolderPlus className="size-3.5" /> New
+        </button>
+      </div>
+      {adding && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void create();
+          }}
+          className="mb-1 flex items-center gap-1 rounded-lg bg-raised px-2 py-1"
+        >
+          <FolderOpen className="size-4 shrink-0 text-route-docs" />
+          <input
+            ref={input}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Escape' && (setAdding(false), setName(''))}
+            onBlur={() => !name.trim() && setAdding(false)}
+            maxLength={80}
+            placeholder="Project name"
+            aria-label="New project name"
+            className="min-w-0 flex-1 bg-transparent py-1 text-[14px] text-ink outline-none placeholder:text-faint"
+          />
+          <button type="submit" disabled={busy || !name.trim()} className="rounded p-1 text-muted hover:text-ink disabled:opacity-40" aria-label="Create project">
+            <Check className="size-3.5" />
+          </button>
+        </form>
+      )}
+      {projects.length === 0 && !adding ? (
+        <button type="button" onClick={() => setAdding(true)} className="px-3 py-1 text-left text-[13px] leading-snug text-muted hover:text-ink">
+          Group chats and files around one topic, with its own instructions.
+        </button>
+      ) : (
+        <ul className="space-y-0.5">
+          {projects.map((p) => {
+            const active = p.id === activeProjectId;
+            const Icon = active ? FolderOpen : Folder;
+            return (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    openProject(p.id);
+                    onNavigate();
+                  }}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[14px] text-ink',
+                    active ? 'bg-raised shadow-lift' : 'hover:bg-raised/60',
+                  )}
+                >
+                  <Icon className="size-4 shrink-0 text-route-docs" />
+                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                  <span className="shrink-0 text-[12px] text-faint">{p.chat_count || ''}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function TypingSpeedControl() {
   const { typingSpeed, setTypingSpeed } = useChat();
   return (
@@ -188,7 +288,7 @@ export function Sidebar({
   onCycleTheme: () => void;
 }) {
   const {
-    conversations, conversationsLoaded, activeId, open: openConversation, newChat, searchConversations, documents, meta, serverDown,
+    conversations, conversationsLoaded, activeId, open: openConversation, newChat, searchConversations, scopedDocuments: documents, meta, serverDown,
     setModelPickerOpen,
   } = useChat();
   const [query, setQuery] = useState('');
@@ -200,12 +300,13 @@ export function Sidebar({
 
   const groups = useMemo(() => {
     const map = new Map<DateGroup, Conversation[]>();
-    for (const c of conversations) {
+    // Project chats live on their project's page; a search looks through every chat.
+    for (const c of conversations.filter((x) => query.trim() || !x.project_id)) {
       const g = dateGroup(c.updated_at);
       map.set(g, [...(map.get(g) ?? []), c]);
     }
     return GROUP_ORDER.filter((g) => map.has(g)).map((g) => [g, map.get(g)!] as const);
-  }, [conversations]);
+  }, [conversations, query]);
 
   const ThemeIcon = theme === 'dark' ? Moon : theme === 'light' ? Sun : Monitor;
   const themeLabel = theme === 'system' ? 'Theme: system' : theme === 'dark' ? 'Theme: dark' : 'Theme: light';
@@ -264,6 +365,7 @@ export function Sidebar({
         </div>
 
         <nav className="scroll-quiet mt-3 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+          {!query && <Projects onNavigate={() => window.innerWidth < 1024 && onClose()} />}
           {!conversationsLoaded ? null : groups.length === 0 ? (
             <p className="px-3 py-6 text-[13.5px] leading-relaxed text-muted">
               {query ? `No conversations match "${query}".` : 'Your conversations will appear here.'}

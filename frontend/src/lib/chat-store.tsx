@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, ApiError, setApiKey as persistApiKey, streamApproval, streamChat } from './api';
 import type {
-  ApprovalRecord, Attachment, ChatMode, Conversation, DocumentInfo, Meta, Step, StoredMessage, StreamEvent, UIMessage,
-  UploadResponse,
+  ApprovalRecord, Attachment, ChatMode, Conversation, DocumentInfo, Meta, Project, Step, StoredMessage, StreamEvent,
+  UIMessage, UploadResponse,
 } from './types';
 import { charsPerSecond, readTypingSpeed, saveTypingSpeed, Typewriter, type TypingSpeed } from './typing';
 import { fromStored, uid } from './utils';
@@ -30,7 +30,13 @@ interface ChatState {
   loadingConversation: boolean;
   /** True while an answer is generating or still being typed out. */
   streaming: boolean;
+  /** Every document; use scopedDocuments for the ones the current view (project or general library) holds. */
   documents: DocumentInfo[];
+  scopedDocuments: DocumentInfo[];
+  projects: Project[];
+  /** The project being viewed, or the open conversation's project; null for the general space. */
+  activeProjectId: string | null;
+  activeProject: Project | null;
   toasts: Toast[];
   needsApiKey: boolean;
   typingSpeed: TypingSpeed;
@@ -66,6 +72,11 @@ interface ChatActions {
   setModelPickerOpen: (open: boolean) => void;
   setMemoryPanelOpen: (open: boolean) => void;
   setConnectionsOpen: (open: boolean) => void;
+  openProject: (id: string) => void;
+  createProject: (name: string, instructions?: string) => Promise<Project | null>;
+  updateProject: (id: string, patch: { name?: string; instructions?: string }) => Promise<boolean>;
+  deleteProject: (id: string) => Promise<void>;
+  refreshProjects: () => Promise<void>;
   /** Approve or decline the actions a paused answer waits on; the rest of the answer streams into it. */
   approve: (messageId: string, decisions: Record<string, Decision>, alwaysAllow?: string[]) => Promise<void>;
   /** Download one answer of the open conversation as a PDF. */
@@ -93,8 +104,14 @@ function readHash(): string | null {
   return m ? m[1] : null;
 }
 
-function writeHash(id: string | null) {
-  const target = id ? `#/c/${id}` : window.location.pathname + window.location.search;
+function readProjectHash(): string | null {
+  const m = /^#\/p\/([A-Za-z0-9_\-]+)$/.exec(window.location.hash);
+  return m ? m[1] : null;
+}
+
+/** #/c/<conversation>, #/p/<project>, or nothing for the home page. */
+function writeHash(id: string | null, kind: 'c' | 'p' = 'c') {
+  const target = id ? `#/${kind}/${id}` : window.location.pathname + window.location.search;
   const changed = id ? window.location.hash !== target : window.location.hash !== '';
   if (changed) history.replaceState(null, '', target);
 }
@@ -109,6 +126,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const projectRef = useRef<string | null>(null);
+  projectRef.current = activeProjectId;
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [needsApiKey, setNeedsApiKey] = useState(false);
   const [typingSpeed, setTypingSpeedState] = useState<TypingSpeed>(readTypingSpeed);
@@ -189,6 +210,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const refreshProjects = useCallback(async () => {
+    try {
+      setProjects(await api.projects());
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) setNeedsApiKey(true);
+    }
+  }, []);
+
   const open = useCallback(
     async (id: string) => {
       if (abortRef.current) abortRef.current.abort();
@@ -198,7 +227,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setLoadingConversation(true);
       try {
         const data = await api.conversation(id);
-        if (activeRef.current === id) setMessages(data.messages.map(fromStored));
+        if (activeRef.current === id) {
+          setMessages(data.messages.map(fromStored));
+          setActiveProjectId(data.conversation.project_id ?? null);
+        }
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
           toast("That conversation doesn't exist anymore.", 'error');
@@ -217,11 +249,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     refreshMeta();
     loadConversations();
     refreshDocuments();
+    refreshProjects();
     const initial = readHash();
     if (initial) open(initial);
+    const initialProject = readProjectHash();
+    if (initialProject) setActiveProjectId(initialProject);
     const onHash = () => {
       const id = readHash();
       if (id && id !== activeRef.current) open(id);
+      const pid = readProjectHash();
+      if (pid) {
+        setActiveId(null);
+        setMessages([]);
+        setActiveProjectId(pid);
+      }
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
@@ -300,6 +341,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                     created_at: now,
                     updated_at: now,
                     message_count: 1,
+                    project_id: projectRef.current,
                   },
                   ...cs.filter((c) => c.id !== ev.conversation_id),
                 ]);
@@ -349,6 +391,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         await typer.drain();
 
         if (finalMessage) {
+          if (projectRef.current) void refreshProjects();
           const stored = fromStored(finalMessage);
           patch(assistantId, (m) => ({ ...stored, steps: stored.steps.length ? stored.steps : m.steps }));
           const convId = finalMessage.conversation_id;
@@ -392,7 +435,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setStreaming(false);
       }
     },
-    [patch],
+    [patch, refreshProjects],
   );
 
   const send = useCallback(
@@ -407,7 +450,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         { id: uid('user'), role: 'user', content: message, createdAt: now, steps: [], sources: [], attachments, mode, status: 'done' },
         { id: assistantTempId, role: 'assistant', content: '', createdAt: now, steps: [], sources: [], status: 'streaming' },
       ]);
-      const body = { message, conversation_id: activeRef.current, attachments, mode };
+      const body = { message, conversation_id: activeRef.current, attachments, mode, project_id: projectRef.current };
       await runStream((signal) => streamChat(body, signal), assistantTempId, message);
     },
     [runStream],
@@ -458,8 +501,64 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     typerRef.current?.dispose();
     setActiveId(null);
     setMessages([]);
+    setActiveProjectId(null);
     writeHash(null);
   }, []);
+
+  // ── projects ──────────────────────────────────────────────────────────────
+  const openProject = useCallback((id: string) => {
+    abortRef.current?.abort();
+    typerRef.current?.dispose();
+    setActiveId(null);
+    setMessages([]);
+    setActiveProjectId(id);
+    writeHash(id, 'p');
+  }, []);
+
+  const createProject = useCallback(
+    async (name: string, instructions = '') => {
+      try {
+        const project = await api.createProject(name, instructions);
+        setProjects((ps) => [project, ...ps]);
+        openProject(project.id);
+        return project;
+      } catch (err) {
+        handleError(err, "Couldn't create the project.");
+        return null;
+      }
+    },
+    [handleError, openProject],
+  );
+
+  const updateProject = useCallback(
+    async (id: string, patch: { name?: string; instructions?: string }) => {
+      try {
+        const project = await api.updateProject(id, patch);
+        setProjects((ps) => ps.map((p) => (p.id === id ? project : p)));
+        return true;
+      } catch (err) {
+        handleError(err, "Couldn't save the project.");
+        return false;
+      }
+    },
+    [handleError],
+  );
+
+  const deleteProject = useCallback(
+    async (id: string) => {
+      try {
+        const res = await api.deleteProject(id);
+        setProjects((ps) => ps.filter((p) => p.id !== id));
+        setConversations((cs) => cs.filter((c) => c.project_id !== id));
+        setDocuments((ds) => ds.filter((d) => d.project_id !== id));
+        if (projectRef.current === id) newChat();
+        toast(`Deleted the project with ${res.chats} ${res.chats === 1 ? 'chat' : 'chats'} and ${res.documents} ${res.documents === 1 ? 'file' : 'files'}.`, 'success');
+      } catch (err) {
+        handleError(err, "Couldn't delete the project.");
+      }
+    },
+    [handleError, newChat, toast],
+  );
 
   // ── conversation management ──────────────────────────────────────────────
   const rename = useCallback(
@@ -530,9 +629,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const upload = useCallback(
     async (files: File[]) => {
       try {
-        const res = await api.upload(files);
+        const res = await api.upload(files, projectRef.current);
         await refreshDocuments();
         refreshMeta();
+        if (projectRef.current) void refreshProjects();
         const failed = res.results.filter((r) => r.status === 'error');
         if (res.documents_added) {
           toast(`Added ${res.documents_added} ${res.documents_added === 1 ? 'document' : 'documents'} to your library.`, 'success');
@@ -544,7 +644,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         return null;
       }
     },
-    [handleError, refreshDocuments, refreshMeta, toast],
+    [handleError, refreshDocuments, refreshMeta, refreshProjects, toast],
   );
 
   const removeDocument = useCallback(
@@ -583,21 +683,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   const hasMessages = messages.length > 0;
+  const scopedDocuments = useMemo(
+    () => documents.filter((d) => (d.project_id ?? null) === activeProjectId),
+    [documents, activeProjectId],
+  );
+  const activeProject = useMemo(() => projects.find((p) => p.id === activeProjectId) ?? null, [projects, activeProjectId]);
   const awaitingApproval = messages.some((m) => !!m.pendingApproval?.length);
   const value = useMemo(
     () => ({
       meta, serverDown, conversations, conversationsLoaded, activeId, hasMessages, loadingConversation, streaming,
-      documents, toasts, needsApiKey, typingSpeed, modelPickerOpen, memoryPanelOpen, connectionsOpen, awaitingApproval,
+      documents, scopedDocuments, projects, activeProjectId, activeProject, toasts, needsApiKey, typingSpeed,
+      modelPickerOpen, memoryPanelOpen, connectionsOpen, awaitingApproval,
       send, regenerate, stop, newChat, open, rename, remove, searchConversations, refreshDocuments, upload,
       removeDocument, clearDocuments, exportConversation, toast, dismissToast, submitApiKey, refreshMeta,
       setTypingSpeed, setModelPickerOpen, setMemoryPanelOpen, setConnectionsOpen, approve, exportPdf,
+      openProject, createProject, updateProject, deleteProject, refreshProjects,
     }),
     [
       meta, serverDown, conversations, conversationsLoaded, activeId, hasMessages, loadingConversation, streaming,
-      documents, toasts, needsApiKey, typingSpeed, modelPickerOpen, memoryPanelOpen, connectionsOpen, awaitingApproval,
+      documents, scopedDocuments, projects, activeProjectId, activeProject, toasts, needsApiKey, typingSpeed,
+      modelPickerOpen, memoryPanelOpen, connectionsOpen, awaitingApproval,
       send, regenerate, stop, newChat, open, rename, remove, searchConversations, refreshDocuments, upload,
       removeDocument, clearDocuments, exportConversation, toast, dismissToast, submitApiKey, refreshMeta, setTypingSpeed,
-      approve, exportPdf,
+      approve, exportPdf, openProject, createProject, updateProject, deleteProject, refreshProjects,
     ],
   );
 

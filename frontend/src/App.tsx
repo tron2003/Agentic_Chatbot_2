@@ -5,6 +5,7 @@ import { ConnectionsPanel } from '@/components/ConnectionsPanel';
 import { LibraryPanel } from '@/components/LibraryPanel';
 import { MemoryPanel } from '@/components/MemoryPanel';
 import { ModelPicker } from '@/components/ModelPicker';
+import { ProjectHome } from '@/components/ProjectHome';
 import { ApiKeyDialog, SetupBanner, Toasts } from '@/components/Overlays';
 import { Sidebar } from '@/components/Sidebar';
 import { TopBar } from '@/components/TopBar';
@@ -21,12 +22,14 @@ function focusComposer() {
 function Shell() {
   const {
     hasMessages, activeId, loadingConversation, newChat, stop, streaming, meta, memoryPanelOpen, setMemoryPanelOpen, connectionsOpen,
-    setConnectionsOpen,
+    setConnectionsOpen, activeProjectId,
   } = useChat();
   const { choice, cycle } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const [libraryOpen, setLibraryOpen] = useState(false);
-  const showWelcome = !activeId && !hasMessages && !loadingConversation;
+  const showHome = !activeId && !hasMessages && !loadingConversation;
+  const showWelcome = showHome && !activeProjectId;
+  const showProject = showHome && !!activeProjectId;
 
   useEffect(() => {
     if (meta?.app_name) document.title = meta.app_name;
@@ -71,6 +74,10 @@ function Shell() {
         {showWelcome ? (
           <div className="scroll-quiet h-full overflow-y-auto">
             <Welcome onOpenLibrary={() => setLibraryOpen(true)} />
+          </div>
+        ) : showProject ? (
+          <div className="scroll-quiet h-full overflow-y-auto">
+            <ProjectHome onOpenLibrary={() => setLibraryOpen(true)} />
           </div>
         ) : (
           <ChatView />

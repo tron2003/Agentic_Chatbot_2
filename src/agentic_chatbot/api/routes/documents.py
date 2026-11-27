@@ -6,14 +6,14 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 
 from agentic_chatbot.api.schemas import DocumentOut, UploadResponse, UploadResult
 from agentic_chatbot.api.security import rate_limit, require_api_key
 from agentic_chatbot.core.settings import get_settings
 from agentic_chatbot.exception.exception import CustomException
 from agentic_chatbot.services.knowledge_base import get_knowledge_base
-from agentic_chatbot.services.store import get_store
+from agentic_chatbot.services.store import NO_PROJECT, get_store
 from agentic_chatbot.utils.document_loader import SUPPORTED_EXTENSIONS, safe_filename
 
 logger = logging.getLogger(__name__)
@@ -38,8 +38,13 @@ async def _save_upload(upload: UploadFile, dest: Path, max_bytes: int) -> int:
 
 
 @router.post("/documents", response_model=UploadResponse, dependencies=[Depends(rate_limit)])
-async def upload_documents(files: list[UploadFile] = File(...)) -> UploadResponse:
-    """Upload files (PDF, text, Markdown, CSV, JSON, code) and index them for document Q&A."""
+async def upload_documents(files: list[UploadFile] = File(...),
+                           project_id: str | None = Form(None, max_length=64)) -> UploadResponse:
+    """Upload files (PDF, text, Markdown, CSV, JSON, code) and index them for document Q&A.
+    With ``project_id`` they belong to that project and only its chats can read them."""
+    project_id = project_id or None
+    if project_id and not await get_store().get_project(project_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     if not files:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No files were sent.")
     if len(files) > MAX_FILES_PER_UPLOAD:
@@ -61,7 +66,7 @@ async def upload_documents(files: list[UploadFile] = File(...)) -> UploadRespons
         tmp = settings.uploads_dir / f"{uuid.uuid4().hex}{ext}"
         try:
             size = await _save_upload(upload, tmp, max_bytes)
-            record = await kb.ingest_file(tmp, name, size)
+            record = await kb.ingest_file(tmp, name, size, project_id=project_id)
             chunks += record["chunks"]
             doc = await get_store().get_document(record["id"])
             results.append(UploadResult(name=name, status="ok", document=doc))
@@ -82,8 +87,13 @@ async def upload_documents(files: list[UploadFile] = File(...)) -> UploadRespons
 
 
 @router.get("/documents", response_model=list[DocumentOut])
-async def list_documents():
-    return await get_store().list_documents()
+async def list_documents(project: str | None = Query(None, max_length=64,
+                                                     description="A project id, or 'none' for the general library")):
+    docs = await get_store().list_documents()
+    if project is None:
+        return docs
+    want = None if project == NO_PROJECT else project
+    return [d for d in docs if (d.get("project_id") or None) == want]
 
 
 @router.delete("/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)

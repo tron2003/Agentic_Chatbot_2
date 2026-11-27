@@ -57,8 +57,13 @@ class DemoChatModel(BaseChatModel):
         if "Router" in self.bound_tools:
             agents = re.findall(r"the external agent ([\w-]+) to do", system)
             named = next((a for a in agents if a.lower() in question.lower()), None)
+            listed = re.search(r"Available tools: ([^\n]+)\.", system)
+            tool_named = next((t for t in (listed.group(1).split(", ") if listed else [])
+                               if "_" in t and re.search(rf"\b{re.escape(t)}\b", question)), None)
             if named:
                 route, reason = "agent", f"The user is asking {named} to do something."
+            elif tool_named:
+                route, reason = "agent", f"The user asked for the {tool_named} tool."
             elif _DOCS.search(question) and "currently EMPTY" not in system:
                 route, reason = "rag", "The question refers to the user's documents."
             elif _MATH.search(question) or _CURRENT.search(question) or _TIME.search(question):
@@ -185,6 +190,9 @@ def _pick_tool(question: str, tools: list[str]) -> tuple[str, dict, str] | None:
     for tool in tools:
         if tool.startswith("ask_") and tool[4:].replace("_", " ") in question.lower():
             return tool, {"task": question}, f"I'll hand this to {tool[4:]}."
+    for tool in tools:  # the question names a tool exactly ("use create_note")
+        if "_" in tool and re.search(rf"\b{re.escape(tool)}\b", question):
+            return tool, {}, f"I'll use {tool}."
     math = _MATH.search(question)
     if math and "calculator" in tools:
         expr = math.group(1).replace("x", "*").replace("×", "*").replace("^", "**").strip(" .,")

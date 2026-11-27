@@ -9,7 +9,8 @@ export interface Step {
   kind: 'route' | 'retrieval' | 'thinking' | 'tool' | 'memory';
   title: string;
   detail?: string;
-  status: 'running' | 'done' | 'error';
+  /** waiting = an action held for the user's approval; declined = not run (declined or never approved). */
+  status: 'running' | 'done' | 'error' | 'waiting' | 'declined';
   tool?: string | null;
   result?: string;
   /** What a search turned up (title and link), shown as it arrives. */
@@ -31,6 +32,28 @@ export interface Attachment {
   name: string;
 }
 
+/** An action the agent wants to run that waits for the user's approval (see the approval card). */
+export interface PendingAction {
+  id: string;
+  tool: string;
+  /** server/tool, used by "Always allow". */
+  key: string;
+  server: string;
+  title: string;
+  args: Record<string, unknown>;
+  description?: string;
+}
+
+export interface ApprovalRecord {
+  id: string;
+  tool: string;
+  title?: string;
+  server?: string;
+  args?: Record<string, unknown>;
+  /** dropped = a new message was sent before it was approved. */
+  decision: 'approve' | 'decline' | 'dropped';
+}
+
 export interface UIMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -46,6 +69,9 @@ export interface UIMessage {
   error?: string;
   elapsedMs?: number;
   model?: string;
+  /** Set while the answer is paused, waiting for the user to approve these actions. */
+  pendingApproval?: PendingAction[];
+  approvals?: ApprovalRecord[];
 }
 
 export interface Conversation {
@@ -54,6 +80,8 @@ export interface Conversation {
   created_at: string;
   updated_at: string;
   message_count: number;
+  /** Route of the latest answer, for the home board. */
+  last_route?: Route | null;
 }
 
 export interface StoredMessage {
@@ -72,6 +100,8 @@ export interface StoredMessage {
     stopped?: boolean;
     failed?: boolean;
     mode?: ChatMode;
+    pending_approval?: { actions: PendingAction[] };
+    approvals?: ApprovalRecord[];
   };
   created_at: string;
 }
@@ -153,13 +183,66 @@ export interface ModelCatalog {
 export interface Integration {
   name: string;
   label: string;
-  kind: 'agent' | 'inbound' | 'webhook';
+  kind: 'agent' | 'inbound' | 'webhook' | 'mcp';
   status: string;
   detail: string;
 }
 
+export type ToolSetting = 'auto' | 'ask' | 'off';
+
+export interface ConnectionTool {
+  name: string;
+  key: string;
+  description: string;
+  kind: 'read' | 'act';
+  /** null = the default for its kind (read tools run, act tools ask). */
+  setting: ToolSetting | null;
+  decision: 'run' | 'ask' | 'off';
+  title?: string | null;
+}
+
+export interface ConnectionServer {
+  name: string;
+  label: string;
+  /** file = config/mcp_servers.yaml, ui = added in the app. */
+  origin: 'file' | 'ui';
+  editable: boolean;
+  transport: 'http' | 'sse' | 'stdio';
+  url?: string | null;
+  command?: string | null;
+  args: string[];
+  headers: Record<string, string>;
+  env: Record<string, string>;
+  enabled: boolean;
+  status: 'idle' | 'connecting' | 'connected' | 'failed' | 'skipped' | 'disabled';
+  detail: string;
+  checked_at?: string | null;
+  tools: ConnectionTool[];
+}
+
+export interface ConnectionsInfo {
+  mcp_enabled: boolean;
+  stdio_allowed: boolean;
+  approvals: boolean;
+  servers: ConnectionServer[];
+  builtin: ConnectionTool[];
+}
+
+export interface ServerDraft {
+  name: string;
+  label?: string;
+  transport: 'http' | 'sse' | 'stdio';
+  url?: string;
+  headers?: Record<string, string>;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  enabled?: boolean;
+}
+
 export type StreamEvent =
-  | { type: 'meta'; conversation_id: string; message_id: string; user_message_id: string | null; is_new: boolean }
+  | { type: 'meta'; conversation_id: string; message_id: string; user_message_id: string | null; is_new: boolean; resumed?: boolean }
+  | { type: 'approval_required'; actions: PendingAction[] }
   | { type: 'route'; route: Route; label: string; reason: string }
   | { type: 'step'; step: Step }
   | { type: 'token'; text: string }

@@ -40,3 +40,12 @@ class Chatbot(BaseModel):
     research_round: int = 0
     research_questions: list[dict] = []
     research_notes: Annotated[list, merge_notes] = []
+
+    # Approval step. When the agent wants to run an act tool (send, create, delete, ask another
+    # agent…), it saves its loop here and the graph pauses in the approval node until the user
+    # decides. Cleared when the answer is written and at the start of every new turn.
+    agent_scratch: list = []          # the agent loop's messages so far (without the system prompt)
+    agent_round: int = 0              # which model round paused
+    agent_sources: list[dict] = []    # sources found before the pause
+    pending_actions: list[dict] = []  # [{id, tool, key, title, server, args, description}]
+    action_decisions: dict = {}       # {call id: "approve" | "decline"}, set by the approval node

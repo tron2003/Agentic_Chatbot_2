@@ -25,7 +25,7 @@ export const Composer = memo(
     { placeholder = 'Ask a question', autoFocus },
     ref,
   ) {
-    const { send, stop, streaming, upload, meta, serverDown, toast } = useChat();
+    const { send, stop, streaming, upload, meta, serverDown, toast, awaitingApproval } = useChat();
     const [text, setText] = useState('');
     // Deep research for the next message: plan, search in parallel, write a cited report.
     const [deep, setDeep] = useState(false);
@@ -214,7 +214,15 @@ export const Composer = memo(
             resize();
           }}
           onKeyDown={onKeyDown}
-          placeholder={serverDown ? 'Waiting for the server…' : deep ? 'What should I research? I’ll plan, search and write a cited report.' : placeholder}
+          placeholder={
+            serverDown
+              ? 'Waiting for the server…'
+              : deep
+                ? 'What should I research? I’ll plan, search and write a cited report.'
+                : awaitingApproval
+                  ? 'Approve or decline the action above, or send a new message to skip it'
+                  : placeholder
+          }
           className="block max-h-60 min-h-[56px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-[15.5px] leading-relaxed text-ink outline-none placeholder:text-faint"
         />
 

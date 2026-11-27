@@ -100,12 +100,15 @@ class MemoryStore(ChatStore):
             return self._public(self._convs[conversation_id])
 
     def _public(self, conv: dict) -> dict:
+        msgs = self._msgs.get(conv["id"], [])
+        last = next((m for m in reversed(msgs) if m["role"] == "assistant"), None)
         return {
             "id": conv["id"],
             "title": conv["title"],
             "created_at": _iso(conv["created_at"]),
             "updated_at": _iso(conv["updated_at"]),
-            "message_count": len(self._msgs.get(conv["id"], [])),
+            "message_count": len(msgs),
+            "last_route": (last or {}).get("metadata", {}).get("route"),
         }
 
     async def get_conversation(self, conversation_id: str) -> dict | None:
@@ -145,7 +148,15 @@ class MemoryStore(ChatStore):
         return deepcopy(self._msgs.get(conversation_id, []))
 
     async def add_message(self, conversation_id: str, message_id: str, role: str, content: str, metadata: dict | None = None) -> dict:
+        """Insert, or update content and metadata when the ID exists (like the Postgres upsert)."""
         async with self._lock:
+            msgs = self._msgs.setdefault(conversation_id, [])
+            existing = next((m for m in msgs if m["id"] == message_id), None)
+            if existing:
+                existing.update(content=content, metadata=metadata or {})
+                if conversation_id in self._convs:
+                    self._convs[conversation_id]["updated_at"] = utcnow()
+                return deepcopy(existing)
             msg = {
                 "id": message_id,
                 "conversation_id": conversation_id,
@@ -154,7 +165,7 @@ class MemoryStore(ChatStore):
                 "metadata": metadata or {},
                 "created_at": _iso(utcnow()),
             }
-            self._msgs.setdefault(conversation_id, []).append(msg)
+            msgs.append(msg)
             if conversation_id in self._convs:
                 self._convs[conversation_id]["updated_at"] = utcnow()
             return deepcopy(msg)
@@ -280,6 +291,7 @@ class PostgresStore(ChatStore):
             "created_at": _iso(row["created_at"]),
             "updated_at": _iso(row["updated_at"]),
             "message_count": int(row.get("message_count") or 0),
+            "last_route": row.get("last_route"),
         }
 
     async def create_conversation(self, conversation_id: str, title: str) -> dict:
@@ -293,7 +305,9 @@ class PostgresStore(ChatStore):
 
     async def get_conversation(self, conversation_id: str) -> dict | None:
         rows = await self._fetch(
-            """SELECT c.*, (SELECT COUNT(*) FROM chatbot_messages m WHERE m.conversation_id = c.id) AS message_count
+            """SELECT c.*, (SELECT COUNT(*) FROM chatbot_messages m WHERE m.conversation_id = c.id) AS message_count,
+                      (SELECT m.metadata->>'route' FROM chatbot_messages m WHERE m.conversation_id = c.id
+                       AND m.role = 'assistant' ORDER BY m.created_at DESC LIMIT 1) AS last_route
                FROM chatbot_conversations c WHERE c.id = %s""",
             (conversation_id,),
         )
@@ -303,7 +317,9 @@ class PostgresStore(ChatStore):
         if query:
             like = f"%{query}%"
             rows = await self._fetch(
-                """SELECT c.*, (SELECT COUNT(*) FROM chatbot_messages m WHERE m.conversation_id = c.id) AS message_count
+                """SELECT c.*, (SELECT COUNT(*) FROM chatbot_messages m WHERE m.conversation_id = c.id) AS message_count,
+                      (SELECT m.metadata->>'route' FROM chatbot_messages m WHERE m.conversation_id = c.id
+                       AND m.role = 'assistant' ORDER BY m.created_at DESC LIMIT 1) AS last_route
                    FROM chatbot_conversations c
                    WHERE c.title ILIKE %s OR EXISTS (
                        SELECT 1 FROM chatbot_messages m WHERE m.conversation_id = c.id AND m.content ILIKE %s)
@@ -312,7 +328,9 @@ class PostgresStore(ChatStore):
             )
         else:
             rows = await self._fetch(
-                """SELECT c.*, (SELECT COUNT(*) FROM chatbot_messages m WHERE m.conversation_id = c.id) AS message_count
+                """SELECT c.*, (SELECT COUNT(*) FROM chatbot_messages m WHERE m.conversation_id = c.id) AS message_count,
+                      (SELECT m.metadata->>'route' FROM chatbot_messages m WHERE m.conversation_id = c.id
+                       AND m.role = 'assistant' ORDER BY m.created_at DESC LIMIT 1) AS last_route
                    FROM chatbot_conversations c ORDER BY c.updated_at DESC LIMIT %s""",
                 (limit,),
             )

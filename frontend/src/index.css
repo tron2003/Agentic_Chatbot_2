@@ -1,32 +1,35 @@
 @import 'tailwindcss';
+@import 'katex/dist/katex.min.css';
 
 /*
-  Junction design tokens.
+  Reittiä design tokens.
   Midnight transit map (dark) and paper route map (light). The three route
   colours carry meaning everywhere they appear: chat = sky, documents = brass,
   research = sea. They are never used as decoration on their own.
+  Signal (orange) means one thing only: an action is waiting for the user.
 */
 
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 :root {
   color-scheme: light;
-  --bg: #eef2f7;
+  --bg: #f0f2f5;
   --bg-raised: #ffffff;
-  --bg-sunk: #e3e9f1;
-  --panel: rgb(255 255 255 / 0.78);
-  --line: #d5dce7;
-  --line-strong: #b4c0d2;
-  --text: #13213a;
-  --text-muted: #4f5f79;
-  --text-faint: #8391a7;
+  --bg-sunk: #e5e9ef;
+  --panel: rgb(255 255 255 / 0.86);
+  --line: #d4dbe5;
+  --line-strong: #aeb9c9;
+  --text: #0e1828;
+  --text-muted: #435069;
+  --text-faint: #77839a;
   --route-chat: #2f6fd6;
   --route-docs: #a8740a;
   --route-agent: #12876f;
   --accent: #2f6fd6;
   --accent-ink: #ffffff;
   --danger: #c43d2c;
-  --glow-opacity: 0.22;
+  --signal: #cf5418;
+  --glow-opacity: 0.16;
   --dot: rgb(19 33 58 / 0.16);
   --shadow-lift: 0 1px 0 rgb(19 33 58 / 0.04), 0 12px 32px -14px rgb(19 33 58 / 0.25);
 }
@@ -48,7 +51,8 @@
   --accent: #9cc4ff;
   --accent-ink: #0d1626;
   --danger: #ff8a7a;
-  --glow-opacity: 0.16;
+  --signal: #ff9a5c;
+  --glow-opacity: 0.12;
   --dot: rgb(233 238 246 / 0.13);
   --shadow-lift: 0 1px 0 rgb(0 0 0 / 0.2), 0 16px 40px -18px rgb(0 0 0 / 0.7);
 }
@@ -71,7 +75,8 @@
     --accent: #9cc4ff;
     --accent-ink: #0d1626;
     --danger: #ff8a7a;
-    --glow-opacity: 0.16;
+    --signal: #ff9a5c;
+    --glow-opacity: 0.12;
     --dot: rgb(233 238 246 / 0.13);
     --shadow-lift: 0 1px 0 rgb(0 0 0 / 0.2), 0 16px 40px -18px rgb(0 0 0 / 0.7);
   }
@@ -93,6 +98,7 @@
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-danger: var(--danger);
+  --color-signal: var(--signal);
 
   --font-sans: 'Overpass Variable', 'Overpass', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Overpass Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
@@ -263,12 +269,59 @@
   }
 }
 
+/* ── Approval: an action stopped at a signal ───────────────────────────── */
+.hazard-edge {
+  background: repeating-linear-gradient(-45deg, var(--signal) 0 7px, transparent 7px 14px);
+}
+@keyframes signal-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--signal) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in oklab, var(--signal) 0%, transparent);
+  }
+}
+.signal-pulse {
+  animation: signal-pulse 1.8s ease-in-out infinite;
+}
+
+/* ── Home board: rows flip down like a split-flap departures board, once ── */
+@keyframes flap-in {
+  from {
+    opacity: 0;
+    transform: perspective(600px) rotateX(-75deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.flap-in {
+  transform-origin: 50% 0;
+  animation: flap-in 520ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .signal-pulse,
+  .flap-in {
+    animation: none;
+  }
+}
+
 /* ── Markdown answer typography ─────────────────────────────────────────── */
 .prose-answer {
   color: var(--text);
-  font-size: 15.5px;
-  line-height: 1.68;
+  font-size: 16px;
+  line-height: 1.7;
   overflow-wrap: anywhere;
+}
+.prose-answer .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.35em 0;
+}
+.prose-answer .katex {
+  font-size: 1.06em;
 }
 .prose-answer > * + * {
   margin-top: 0.85em;

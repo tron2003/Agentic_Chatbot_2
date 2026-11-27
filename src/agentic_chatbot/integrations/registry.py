@@ -56,6 +56,14 @@ def describe(base_path: str = "") -> dict[str, Any]:
     for a in cfg.enabled_agents:
         items.append({"name": a.name, "label": a.display, "kind": "agent",
                       "status": _agent_status.get(a.name, "unknown"), "detail": f"tool {a.tool_name}"})
+    from agentic_chatbot.mcp.mcp_manager import mcp_manager  # imported late: the manager imports tool settings
+
+    for name, server in mcp_manager.servers.items():
+        if not server.enabled or server.status == "disabled":
+            continue
+        items.append({"name": f"mcp:{name}", "label": server.config.get("label") or name, "kind": "mcp",
+                      "status": "ok" if server.status == "connected" else server.status,
+                      "detail": f"{len(server.tools)} tools" if server.status == "connected" else server.detail})
     for w in cfg.enabled_webhooks:
         items.append({"name": w.name, "label": w.name, "kind": "webhook",
                       "status": dispatcher.last_status.get(w.name, "idle"),

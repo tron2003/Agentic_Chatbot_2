@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Backdrop } from '@/components/Backdrop';
 import { ChatView } from '@/components/ChatView';
+import { ConnectionsPanel } from '@/components/ConnectionsPanel';
 import { LibraryPanel } from '@/components/LibraryPanel';
 import { MemoryPanel } from '@/components/MemoryPanel';
 import { ModelPicker } from '@/components/ModelPicker';
@@ -18,7 +19,10 @@ function focusComposer() {
 }
 
 function Shell() {
-  const { hasMessages, activeId, loadingConversation, newChat, stop, streaming, meta, memoryPanelOpen, setMemoryPanelOpen } = useChat();
+  const {
+    hasMessages, activeId, loadingConversation, newChat, stop, streaming, meta, memoryPanelOpen, setMemoryPanelOpen, connectionsOpen,
+    setConnectionsOpen,
+  } = useChat();
   const { choice, cycle } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -48,7 +52,7 @@ function Shell() {
 
   return (
     <div className="relative h-full overflow-hidden">
-      <Backdrop />
+      <Backdrop quiet />
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -74,6 +78,7 @@ function Shell() {
       </main>
       <LibraryPanel open={libraryOpen} onClose={() => setLibraryOpen(false)} />
       <MemoryPanel open={memoryPanelOpen} onClose={() => setMemoryPanelOpen(false)} />
+      <ConnectionsPanel open={connectionsOpen} onClose={() => setConnectionsOpen(false)} />
       <ModelPicker />
       <Toasts />
       <ApiKeyDialog />

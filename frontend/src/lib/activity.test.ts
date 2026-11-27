@@ -35,4 +35,9 @@ describe('describeActivity', () => {
     expect(describeActivity([], undefined).phrases[1]).toBe('Choosing a route…');
     expect(describeActivity([step({ id: 'q', tool: 'query_spreadsheet', status: 'running', title: 'Calculating' })], 'agent').phrases).toEqual(['Crunching the numbers…']);
   });
+
+  it('says when an action is waiting for approval', () => {
+    const a = describeActivity([step({ id: 'c1', tool: 'ask_openclaw', title: 'Asking OpenClaw', status: 'waiting' })], 'agent');
+    expect(a.phrases).toEqual(['Waiting for your approval…']);
+  });
 });

@@ -78,6 +78,13 @@ agent:
   max_tool_output_chars: 12000
   web_results: 5
 
+approvals:
+  # Before the agent runs an action (send, create, delete, write, or a task for OpenClaw/Hermes),
+  # it pauses and the chat shows an approval card. Look-ups never ask.
+  # ask = pause for approval (default) | off = run everything without asking.
+  # Per-tool choices (Always allow / Ask first / Off) are made in the Connections panel.
+  mode: ${TOOL_APPROVALS:-ask}
+
 research:
   # Deep research: plan sub-questions, search them in parallel, check for gaps,
   # then write a cited report. Quick look-ups ("weather in Pune", "who won…")

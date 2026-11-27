@@ -55,7 +55,8 @@ export function Timeline({ steps, route, live, elapsedMs }: { steps: Step[]; rou
   }, [live]);
 
   if (!visible.length) return null;
-  const color = route ? ROUTE_VAR[route] : 'var(--line-strong)';
+  const waiting = visible.find((s) => s.status === 'waiting');
+  const color = waiting ? 'var(--signal)' : route ? ROUTE_VAR[route] : 'var(--line-strong)';
   const running = visible.find((s) => s.status === 'running');
   const toolCount = visible.filter((s) => s.kind === 'tool').length;
   const searches = visible.filter((s) => s.id.startsWith('research-') && s.kind === 'tool').length;
@@ -64,7 +65,11 @@ export function Timeline({ steps, route, live, elapsedMs }: { steps: Step[]; rou
     : toolCount
       ? `, ${toolCount} ${toolCount === 1 ? 'tool call' : 'tool calls'}`
       : '';
-  const summary = live ? running?.title ?? 'Working' : `${visible.length} ${visible.length === 1 ? 'step' : 'steps'}${tools}`;
+  const summary = waiting
+    ? 'Waiting for your approval'
+    : live
+      ? running?.title ?? 'Working'
+      : `${visible.length} ${visible.length === 1 ? 'step' : 'steps'}${tools}`;
 
   return (
     <div className="mb-3">
@@ -93,27 +98,32 @@ export function Timeline({ steps, route, live, elapsedMs }: { steps: Step[]; rou
             className="relative overflow-hidden pl-[5px]"
           >
             {visible.map((s, i) => {
-              const dot = color;
+              const dot = s.status === 'waiting' ? 'var(--signal)' : route ? ROUTE_VAR[route] : 'var(--line-strong)';
               return (
               <li key={s.id} className="relative flex gap-3 pb-3 pt-1 last:pb-1">
                 {/* line segment */}
                 {i < visible.length - 1 && (
-                  <span className="absolute left-[5px] top-[18px] bottom-[-4px] w-[2px] -translate-x-1/2 rounded" style={{ background: color, opacity: 0.45 }} />
+                  <span className="absolute left-[5px] top-[18px] bottom-[-4px] w-[2px] -translate-x-1/2 rounded" style={{ background: dot, opacity: 0.45 }} />
                 )}
                 <span className="relative mt-[5px] flex size-[11px] shrink-0 items-center justify-center">
-                  {s.status === 'running' && (
+                  {(s.status === 'running' || s.status === 'waiting') && (
                     <span className="absolute inline-flex size-[11px] animate-ping rounded-full opacity-60" style={{ background: dot }} />
                   )}
                   <span
-                    className="relative size-[11px] rounded-full border-2"
+                    className={cn('relative size-[11px] rounded-full border-2', s.status === 'declined' && 'border-dashed')}
                     style={{
-                      borderColor: s.status === 'error' ? 'var(--danger)' : dot,
+                      borderColor: s.status === 'error' ? 'var(--danger)' : s.status === 'declined' ? 'var(--line-strong)' : dot,
                       background: s.status === 'done' ? dot : 'var(--bg)',
                     }}
                   />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className={cn('text-[13.5px] font-semibold leading-snug', s.status === 'running' ? 'shimmer-text' : 'text-ink')}>
+                  <p
+                    className={cn(
+                      'text-[13.5px] font-semibold leading-snug',
+                      s.status === 'running' ? 'shimmer-text' : s.status === 'declined' ? 'text-muted line-through decoration-line-strong' : 'text-ink',
+                    )}
+                  >
                     {s.title}
                   </p>
                   {s.detail ? (
@@ -127,7 +137,12 @@ export function Timeline({ steps, route, live, elapsedMs }: { steps: Step[]; rou
                     </p>
                   ) : null}
                   {s.result && s.status !== 'running' ? (
-                    <p className={cn('mt-0.5 line-clamp-2 text-[12.5px] leading-snug', s.status === 'error' ? 'text-danger' : 'text-faint')}>
+                    <p
+                      className={cn(
+                        'mt-0.5 line-clamp-2 text-[12.5px] leading-snug',
+                        s.status === 'error' ? 'text-danger' : s.status === 'waiting' ? 'font-semibold text-signal' : 'text-faint',
+                      )}
+                    >
                       {s.result}
                     </p>
                   ) : null}

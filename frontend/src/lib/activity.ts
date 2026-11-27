@@ -31,7 +31,11 @@ function sitesOf(steps: Step[]): string[] {
 export function describeActivity(steps: Step[], route?: Route): Activity {
   const visible = steps.filter((s) => s.kind !== 'route' && s.kind !== 'memory');
   const running = visible.filter((s) => s.status === 'running');
-  const done = visible.filter((s) => s.status !== 'running');
+  const done = visible.filter((s) => s.status !== 'running' && s.status !== 'waiting');
+
+  if (visible.some((s) => s.status === 'waiting') && !running.length) {
+    return { phrases: ['Waiting for your approval…'], sites: [] };
+  }
 
   if (running.some((s) => s.id === 'research-write')) {
     const sites = sitesOf(done).slice(0, 6);

@@ -1,5 +1,8 @@
 import type {
   ChatMode,
+  ConnectionServer,
+  ConnectionsInfo,
+  ConnectionTool,
   Conversation,
   DocumentInfo,
   MemoryItem,
@@ -8,8 +11,10 @@ import type {
   ModelCatalog,
   ModelChoice,
   ModelCurrent,
+  ServerDraft,
   StoredMessage,
   StreamEvent,
+  ToolSetting,
   UploadResponse,
 } from './types';
 
@@ -118,6 +123,27 @@ export const api = {
   addMemory: (content: string) => request<MemoryItem>('/api/memory', { method: 'POST', body: JSON.stringify({ content }) }),
   removeMemory: (id: string) => request<void>(`/api/memory/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   clearMemories: () => request<{ deleted: number }>('/api/memory?confirm=true', { method: 'DELETE' }),
+  connections: () => request<ConnectionsInfo>('/api/connections'),
+  testConnection: (draft: ServerDraft) =>
+    request<{ status: ConnectionServer['status']; detail: string; tools: ConnectionTool[] }>('/api/connections/test', {
+      method: 'POST',
+      body: JSON.stringify(draft),
+    }),
+  addConnection: (draft: ServerDraft) =>
+    request<ConnectionServer>('/api/connections', { method: 'POST', body: JSON.stringify(draft) }),
+  updateConnection: (name: string, draft: ServerDraft) =>
+    request<ConnectionServer>(`/api/connections/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify(draft) }),
+  switchConnection: (name: string, enabled: boolean) =>
+    request<ConnectionServer>(`/api/connections/${encodeURIComponent(name)}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+  removeConnection: (name: string) =>
+    request<{ deleted: string }>(`/api/connections/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  reconnect: (name: string) =>
+    request<ConnectionServer>(`/api/connections/${encodeURIComponent(name)}/reconnect`, { method: 'POST' }),
+  setToolSetting: (key: string, setting: ToolSetting | null) =>
+    request<{ key: string; setting: ToolSetting | null }>('/api/connections/tools', {
+      method: 'PUT',
+      body: JSON.stringify({ key, setting }),
+    }),
   exportUrl: (id: string) => `${API_URL}/api/conversations/${encodeURIComponent(id)}/export`,
   /** One answer (a Deep research report) as a PDF file. */
   async exportPdf(conversationId: string, messageId: string): Promise<{ filename: string; blob: Blob }> {
@@ -142,6 +168,13 @@ export const api = {
   },
 };
 
+export interface ApproveBody {
+  conversation_id: string;
+  message_id: string;
+  decisions: Record<string, 'approve' | 'decline'>;
+  always_allow?: string[];
+}
+
 export interface ChatBody {
   message?: string;
   conversation_id?: string | null;
@@ -154,10 +187,19 @@ export interface ChatBody {
  * POST /api/chat/stream and yield parsed Server-Sent Events.
  * Aborting the signal closes the connection, which stops generation server-side.
  */
-export async function* streamChat(body: ChatBody, signal: AbortSignal): AsyncGenerator<StreamEvent> {
+export function streamChat(body: ChatBody, signal: AbortSignal): AsyncGenerator<StreamEvent> {
+  return streamEvents('/api/chat/stream', body, signal);
+}
+
+/** POST /api/chat/approve: decide on a paused answer's actions and stream the rest of it. */
+export function streamApproval(body: ApproveBody, signal: AbortSignal): AsyncGenerator<StreamEvent> {
+  return streamEvents('/api/chat/approve', body, signal);
+}
+
+async function* streamEvents(path: string, body: unknown, signal: AbortSignal): AsyncGenerator<StreamEvent> {
   let res: Response;
   try {
-    res = await fetch(`${API_URL}/api/chat/stream`, {
+    res = await fetch(`${API_URL}${path}`, {
       method: 'POST',
       headers: headers({ 'Content-Type': 'application/json', Accept: 'text/event-stream' }),
       body: JSON.stringify(body),

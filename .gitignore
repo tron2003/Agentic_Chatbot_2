@@ -16,6 +16,7 @@ venv/
 
 # runtime data
 config/model_selection.json
+config/connections.json
 workspace/
 artifacts/
 *.log

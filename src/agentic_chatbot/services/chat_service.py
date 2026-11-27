@@ -9,6 +9,13 @@ both behave identically. Protocol events added at this layer:
     {"type": "done", "message": {...stored assistant message...}}
     {"type": "error", "code", "message", "request_id"}
     {"type": "ping"}                             # heartbeat for proxies
+
+Approval step: when the agent pauses before an act tool, the pipeline sends
+``approval_required``; the turn stores the message with ``metadata.pending_approval``
+and ends with ``done``. ``prepare_resume()`` continues it: the rest of the answer
+streams into the same message, and ``metadata.approvals`` records each decision.
+Only web turns pause (``interactive``); the OpenAI-compatible API and the MCP server
+have nobody to approve, so act tools are declined there.
 """
 
 from __future__ import annotations
@@ -91,6 +98,17 @@ class _Accumulator:
         self.route_reason: str | None = None
         self.steps: dict[str, dict] = {}
         self.sources: list[dict] = []
+        self.pending: list[dict] | None = None  # actions waiting for approval
+
+    @classmethod
+    def from_message(cls, message: dict) -> _Accumulator:
+        """Carry on from a stored (paused) message: keep its route, timeline and sources."""
+        acc = cls()
+        meta = message.get("metadata") or {}
+        acc.route, acc.route_reason = meta.get("route"), meta.get("route_reason")
+        acc.steps = {s["id"]: s for s in meta.get("steps") or [] if isinstance(s, dict) and s.get("id")}
+        acc.sources = list(meta.get("sources") or [])
+        return acc
 
     def apply(self, ev: dict[str, Any]) -> None:
         kind = ev.get("type")
@@ -108,6 +126,11 @@ class _Accumulator:
         elif kind == "answer":
             self.answer = ev.get("content") or ""
             self.route = self.route or ev.get("route")
+        elif kind == "approval_required":
+            self.pending = list(ev.get("actions") or [])
+            for action in self.pending:
+                if action.get("id") in self.steps:
+                    self.steps[action["id"]]["status"] = "waiting"
 
     @property
     def content(self) -> str:
@@ -118,7 +141,7 @@ class ChatTurn:
     def __init__(self, pipeline: ChatbotPipeline, store: ChatStore, *, conversation_id: str, is_new: bool,
                  message: str | None, model_message: str | None, user_message_id: str | None,
                  checkpoint_id: str | None = None, source: str = "web", mode: str = "auto",
-                 user_id: str | None = None):
+                 user_id: str | None = None, resume: dict[str, str] | None = None, prior: dict | None = None):
         self.pipeline = pipeline
         self.store = store
         self.conversation_id = conversation_id
@@ -130,26 +153,44 @@ class ChatTurn:
         self.source = source
         self.mode = mode
         self.user_id = user_id
-        self.assistant_id = f"msg_{uuid.uuid4().hex[:20]}"
+        self.resume = resume
+        self.prior = prior
+        self.interactive = source == "web"
+        self.assistant_id = prior["id"] if prior else f"msg_{uuid.uuid4().hex[:20]}"
+
+    def _approvals(self) -> list[dict]:
+        """Decisions so far for this message: earlier ones plus the ones being resumed now."""
+        meta = (self.prior or {}).get("metadata") or {}
+        log = list(meta.get("approvals") or [])
+        if self.resume is not None:
+            for action in (meta.get("pending_approval") or {}).get("actions") or []:
+                log.append({k: action.get(k) for k in ("id", "tool", "title", "server", "args")}
+                           | {"decision": self.resume.get(action.get("id"), "decline")})
+        return log
 
     def _metadata(self, acc: _Accumulator, started: float, **extra: Any) -> dict[str, Any]:
         llm = describe_llm()
+        prior_meta = (self.prior or {}).get("metadata") or {}
+        elapsed = int((time.perf_counter() - started) * 1000) + int(prior_meta.get("elapsed_ms") or 0)
+        approvals = self._approvals()
         return {
             "route": acc.route,
             "route_reason": acc.route_reason,
             "steps": [s for s in acc.steps.values() if s.get("kind") != "route"],
             "sources": acc.sources,
-            "elapsed_ms": int((time.perf_counter() - started) * 1000),
+            "elapsed_ms": elapsed,
             "model": llm["main"]["model"],
             "request_id": get_request_id(),
             "source": self.source,
             **({"mode": self.mode} if self.mode != "auto" else {}),
+            **({"approvals": approvals} if approvals else {}),
+            **({"pending_approval": {"actions": acc.pending}} if acc.pending else {}),
             **extra,
         }
 
     async def events(self) -> AsyncIterator[dict[str, Any]]:
         started = time.perf_counter()
-        acc = _Accumulator()
+        acc = _Accumulator.from_message(self.prior) if self.prior else _Accumulator()
         queue: asyncio.Queue = asyncio.Queue()
         sentinel = object()
         persisted = False
@@ -160,12 +201,14 @@ class ChatTurn:
             "message_id": self.assistant_id,
             "user_message_id": self.user_message_id,
             "is_new": self.is_new,
+            **({"resumed": True} if self.resume is not None else {}),
         }
 
         async def produce() -> None:
             try:
                 async for ev in self.pipeline.stream(self.conversation_id, self.model_message, self.checkpoint_id,
-                                                     mode=self.mode, user_id=self.user_id):
+                                                     mode=self.mode, user_id=self.user_id,
+                                                     interactive=self.interactive, resume=self.resume):
                     await queue.put(ev)
                 await queue.put(sentinel)
             except asyncio.CancelledError:
@@ -211,6 +254,8 @@ class ChatTurn:
             stored = await self._persist(acc, started)
             persisted = True
             yield {"type": "done", "message": stored}
+            if acc.pending:
+                return  # answer.completed fires once the paused answer is finished
             if title is None:
                 conv = await self.store.get_conversation(self.conversation_id)
                 title = conv["title"] if conv else None
@@ -235,7 +280,7 @@ class ChatTurn:
                 _spawn(self._persist(acc, started, stopped=True))
 
     async def _persist(self, acc: _Accumulator, started: float, **flags: Any) -> dict:
-        content = acc.content.strip() or "_No answer was produced._"
+        content = acc.content.strip() or ("" if acc.pending else "_No answer was produced._")
         return await self.store.add_message(
             self.conversation_id, self.assistant_id, "assistant", content, self._metadata(acc, started, **flags)
         )
@@ -273,6 +318,8 @@ async def prepare_turn(pipeline: ChatbotPipeline, store: ChatStore, *, conversat
         raise TurnError(422, "Message cannot be empty")
     if not existing:
         await store.create_conversation(conversation_id, title or fallback_title(message))
+    else:
+        await drop_pending_approval(pipeline, store, conversation_id)
 
     model_message = message
     metadata: dict[str, Any] = {"source": source} if source != "web" else {}
@@ -288,3 +335,49 @@ async def prepare_turn(pipeline: ChatbotPipeline, store: ChatStore, *, conversat
     return ChatTurn(pipeline, store, conversation_id=conversation_id, is_new=not existing,
                     message=message, model_message=model_message, user_message_id=user_message_id, source=source,
                     mode=mode, user_id=user_id)
+
+
+DROPPED_NOTE = "_Not run: a new message was sent before this action was approved._"
+
+
+async def _paused_message(store: ChatStore, conversation_id: str, message_id: str | None = None) -> dict | None:
+    for msg in reversed(await store.get_messages(conversation_id)):
+        if msg["role"] != "assistant":
+            continue
+        if (msg.get("metadata") or {}).get("pending_approval") and (message_id is None or msg["id"] == message_id):
+            return msg
+    return None
+
+
+async def drop_pending_approval(pipeline: ChatbotPipeline, store: ChatStore, conversation_id: str) -> None:
+    """A new message on a paused chat counts as declining: mark the stored message so the UI shows it."""
+    msg = await _paused_message(store, conversation_id)
+    if not msg:
+        return
+    meta = dict(msg.get("metadata") or {})
+    actions = (meta.pop("pending_approval", None) or {}).get("actions") or []
+    meta["approvals"] = [*(meta.get("approvals") or []),
+                         *({k: a.get(k) for k in ("id", "tool", "title", "server", "args")} | {"decision": "dropped"}
+                           for a in actions)]
+    for s in meta.get("steps") or []:
+        if s.get("status") == "waiting":
+            s["status"], s["result"] = "declined", "Not approved"
+    content = (msg.get("content") or "").strip()
+    await store.add_message(conversation_id, msg["id"], "assistant",
+                            f"{content}\n\n{DROPPED_NOTE}".strip(), meta)
+
+
+async def prepare_resume(pipeline: ChatbotPipeline, store: ChatStore, *, conversation_id: str, message_id: str,
+                         decisions: dict[str, str], user_id: str | None = None) -> ChatTurn:
+    """Continue a paused answer with the user's decisions ({call id: "approve" | "decline"})."""
+    if not await store.get_conversation(conversation_id):
+        raise TurnError(404, "Conversation not found.")
+    waiting = await pipeline.pending_approval(conversation_id)
+    msg = await _paused_message(store, conversation_id, message_id)
+    if not waiting or not msg:
+        raise TurnError(409, "Nothing in this conversation is waiting for approval. It may have been answered already.")
+    ids = {a["id"] for a in waiting}
+    clean = {i: ("approve" if str(decisions.get(i, "")).lower() == "approve" else "decline") for i in ids}
+    return ChatTurn(pipeline, store, conversation_id=conversation_id, is_new=False, message=None,
+                    model_message=None, user_message_id=None, source="web", user_id=user_id,
+                    resume=clean, prior=msg)

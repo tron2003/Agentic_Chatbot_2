@@ -42,17 +42,20 @@ def _fresh_state(tmp_path, monkeypatch):
     from agentic_chatbot.core.db import reset_postgres_check
     from agentic_chatbot.core.settings import reset_caches
     from agentic_chatbot.integrations.config import reset_integrations
+    from agentic_chatbot.mcp.mcp_manager import mcp_manager
     from agentic_chatbot.services import knowledge_base, long_term_memory, store
 
     monkeypatch.setenv("WORKSPACE_DIR", str(tmp_path / "workspace"))
     # Never read or write the real model picker choice from tests.
     monkeypatch.setenv("MODEL_SELECTION_PATH", str(tmp_path / "model_selection.json"))
+    monkeypatch.setenv("CONNECTIONS_PATH", str(tmp_path / "connections.json"))
     reset_caches()
     reset_integrations()
     reset_llm_cache()
     reset_vector_store()
     reset_postgres_check()
     limiter.reset()
+    mcp_manager.servers.clear()
     store.set_store(None)
     long_term_memory.set_memory_store(None)
     knowledge_base.get_knowledge_base()._invalidate()

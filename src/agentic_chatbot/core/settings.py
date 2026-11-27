@@ -126,7 +126,7 @@ class Settings(BaseSettings):
 
     environment: str = Field("development", description="development | production")
     app_name: str = "Reittiä"  # shown in the UI and to connected apps; APP_NAME in .env overrides it
-    app_version: str = "2.1.0"
+    app_version: str = "2.5.0"
 
     # Paths
     config_path: Path = PROJECT_ROOT / "config" / "config.yaml"
@@ -155,13 +155,16 @@ class Settings(BaseSettings):
 
     # Features
     enable_mcp: bool = True
+    # Adding local (stdio) MCP servers from the Connections panel runs a command on this machine.
+    # Unset = allowed in development, refused in production.
+    allow_ui_stdio: bool | None = None
 
     # Logging
     log_level: str = "INFO"
     log_format: str = ""  # "json" | "text"; default depends on environment
     log_file: str = ""
 
-    @field_validator("db_uri", "vector_db_uri", "llm_provider", mode="before")
+    @field_validator("db_uri", "vector_db_uri", "llm_provider", "allow_ui_stdio", mode="before")
     @classmethod
     def _blank_to_none(cls, v: Any) -> Any:
         return None if isinstance(v, str) and not v.strip() else v
@@ -169,6 +172,10 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
+
+    @property
+    def ui_stdio_allowed(self) -> bool:
+        return self.allow_ui_stdio if self.allow_ui_stdio is not None else not self.is_production
 
     @property
     def cors_origins(self) -> list[str]:

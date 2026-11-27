@@ -1,9 +1,11 @@
 import { memo, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components, type Options } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
+import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import { Check, Copy } from 'lucide-react';
-import { rehypeCaret, splitBlocks } from '@/lib/markdown-stream';
+import { normalizeMath, rehypeCaret, splitBlocks } from '@/lib/markdown-stream';
 
 function textOf(node: ReactNode): string {
   if (typeof node === 'string' || typeof node === 'number') return String(node);
@@ -64,10 +66,12 @@ const components: Components = {
 };
 
 // Plugin lists are module constants so react-markdown sees the same arrays every render.
-const REMARK: Options['remarkPlugins'] = [remarkGfm];
-const HIGHLIGHT: Options['rehypePlugins'] = [[rehypeHighlight, { detect: true, ignoreMissing: true }]];
-const CARET: Options['rehypePlugins'] = [rehypeCaret];
-const NONE: Options['rehypePlugins'] = [];
+// Single $ never starts maths, so prices in answers stay text; $$ … $$ (and \[ \], \( \)) render with KaTeX.
+const REMARK: Options['remarkPlugins'] = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]];
+const KATEX = [rehypeKatex, { throwOnError: false, strict: 'ignore', output: 'html' }] as const;
+const HIGHLIGHT: Options['rehypePlugins'] = [KATEX as never, [rehypeHighlight, { detect: true, ignoreMissing: true }]];
+const CARET: Options['rehypePlugins'] = [KATEX as never, rehypeCaret];
+const NONE: Options['rehypePlugins'] = [KATEX as never];
 
 /**
  * One finished chunk of a streaming answer. Memoised on its text, so once a
@@ -87,14 +91,14 @@ export const Markdown = memo(function Markdown({ text, streaming }: { text: stri
     return (
       <div className="prose-answer">
         <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={HIGHLIGHT} components={components} skipHtml>
-          {text}
+          {normalizeMath(text)}
         </ReactMarkdown>
       </div>
     );
   }
   // While streaming, only the last block changes; react-markdown renders no
   // wrapper element, so the blocks are still direct children of .prose-answer.
-  const blocks = splitBlocks(text);
+  const blocks = splitBlocks(normalizeMath(text));
   return (
     <div className="prose-answer">
       {blocks.map((block, i) => (

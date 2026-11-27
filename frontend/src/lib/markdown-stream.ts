@@ -95,3 +95,22 @@ export function rehypeCaret() {
     target.children = kids;
   };
 }
+
+/**
+ * Models write maths as \[ … \] and \( … \), which Markdown turns into plain
+ * brackets. Rewrite them to $$ … $$ so remark-math renders them. Code is left
+ * alone, and single $ signs never start maths (prices like $5 stay text).
+ */
+export function normalizeMath(text: string): string {
+  if (!text.includes('\\[') && !text.includes('\\(')) return text;
+  const parts = text.split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`)/g);
+  return parts
+    .map((part, i) =>
+      i % 2
+        ? part
+        : part
+            .replace(/\\\[([\s\S]+?)\\\]/g, (_, m: string) => `\n\n$$\n${m.trim()}\n$$\n\n`)
+            .replace(/\\\(([\s\S]+?)\\\)/g, (_, m: string) => `$$${m.trim()}$$`),
+    )
+    .join('');
+}

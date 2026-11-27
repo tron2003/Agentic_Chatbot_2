@@ -1,5 +1,33 @@
 # Changelog
 
+## 2.5.0 (branch feature/connector-hub, 2026-11-27)
+
+### Added: approval before actions
+- `services/tool_policy.py` sorts every tool into **read** (look-ups) or **act** (send, create, delete, write, `ask_<agent>`). MCP tools use the server's `readOnlyHint` / `destructiveHint`; otherwise the name decides, and anything unclear counts as an action.
+- When the agent asks for an act tool, read tools from the same turn still run, the agent saves its loop in state (`agent_scratch`, `agent_round`, `agent_sources`, `pending_actions`), and the graph pauses in a new `approval` node with `interrupt()`. The pause lives in its own small node because LangGraph re-runs the interrupted node on resume, which would have repeated the model call and the finished tools.
+- New SSE event `approval_required`; the paused answer is stored with `metadata.pending_approval`. `POST /api/chat/approve` resumes with `Command(resume=…)` and streams the rest into the same message; `metadata.approvals` records each decision. "Don't ask again" saves the tool as Always allow.
+- A new message on a paused chat declines the action (the stored message is marked "Not approved"), and the new turn clears the saved loop.
+- Runs with nobody to approve (OpenAI-compatible API, MCP server `ask`) decline act tools with a note to approve them in the app. `TOOL_APPROVALS=off` / `approvals.mode: off` runs everything.
+- The router now sends any message that names one of the agent's tools ("use write_file to …") to the agent.
+
+### Added: Connections panel
+- `mcp_manager` keeps tools per server and can connect, reload and remove one server while the app runs; each tool is tagged with its server.
+- `config/connections.json` (git-ignored, `CONNECTIONS_PATH`) holds servers added in the app, on/off for servers from `mcp_servers.yaml`, and per-tool settings (`auto`, `ask`, `off`; tools set to Off are hidden from the agent).
+- `/api/connections`: list, test, add, edit, switch, remove, reconnect, and `PUT /api/connections/tools`. Header and env values are masked in responses and kept when sent back masked. Local (stdio) servers can be added from the app only in development or with `ALLOW_UI_STDIO=true`; commands with shell characters are refused.
+- MCP servers appear in the sidebar's Connections list and `/api/meta`.
+
+### Changed: the UI
+- **Home** is now a departures board of your own work: greeting with your name (from long-term memory) and the local time, the composer with suggestions from your files and sheets, recent chats with the route each one took (`last_route` added to the conversation list), and a side column with what Reittiä knows about you, your library and your connections.
+- **Answers** hang off their route's line (a station ring and a coloured rail), with larger, higher-contrast text; your messages are solid bubbles. Action buttons are visible without hovering.
+- **Approval card** with a hazard-striped edge in a new signal colour used only for approvals; timeline stops gain waiting and declined states; the live line says "Waiting for your approval…".
+- **Connections panel** slides over the chat: servers as lines coloured by status, tools with Reads/Acts badges and Always allow / Ask first / Off, an add/edit form with Test connection.
+- Maths renders with KaTeX: `\[ … \]` and `\( … \)` are rewritten to `$$ … $$`; single `$` stays text so prices aren't mangled. New dependencies: katex, remark-math, rehype-katex.
+- The backdrop's transit lines are gone and its glows dimmed, so nothing runs through the text.
+
+### Tests
+- `tests/test_approvals_and_connections.py` (26) plus updated integration and routing tests: pytest 128 passed. Frontend: 44 passed (approval mapping, names from memory, maths, waiting activity). tsc, ruff and the build are clean.
+- Live check (liquid/lfm-3-1.7b:free): "Use the write_file tool to create hello.txt…" paused at the approval card; Approve wrote `workspace/hello.txt` and the answer continued in the same message.
+
 ## 2.1.0
 
 ### Added: optional integrations (all off by default, `config/integrations.yaml`)

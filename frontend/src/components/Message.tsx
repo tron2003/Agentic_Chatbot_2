@@ -1,5 +1,6 @@
 import { memo, useState } from 'react';
 import { Brain, Check, Copy, FileDown, Loader2, Paperclip, RotateCcw, Telescope } from 'lucide-react';
+import { ApprovalCard, ApprovalLog } from './ApprovalCard';
 import { LiveActivity } from './LiveActivity';
 import { Markdown } from './Markdown';
 import { Sources } from './Sources';
@@ -8,34 +9,35 @@ import { useChat } from '@/lib/chat-store';
 import { ROUTE_LABEL, type Route, type UIMessage } from '@/lib/types';
 import { cn, formatDuration } from '@/lib/utils';
 
-const ROUTE_CLASS: Record<Route, string> = {
-  chat: 'text-route-chat',
-  rag: 'text-route-docs',
-  agent: 'text-route-agent',
-};
+export const ROUTE_VAR: Record<Route, string> = { chat: 'var(--route-chat)', rag: 'var(--route-docs)', agent: 'var(--route-agent)' };
 
-function RouteMarker({ route, reason, pending }: { route?: Route; reason?: string; pending: boolean }) {
-  if (!route) {
-    return (
-      <span className="inline-flex items-center gap-2 text-[13px] text-muted">
-        <span className="size-2 animate-pulse rounded-full bg-line-strong" />
-        {pending ? 'Choosing a route' : 'Answer'}
-      </span>
-    );
-  }
+/**
+ * The station at the top of an answer: a ring in the route's colour and its name.
+ * The route's line runs down from it along the whole answer.
+ */
+function Station({ route, reason, pending, waiting }: { route?: Route; reason?: string; pending: boolean; waiting: boolean }) {
+  const color = waiting ? 'var(--signal)' : route ? ROUTE_VAR[route] : 'var(--line-strong)';
   return (
-    <span className={cn('inline-flex items-center gap-2 text-[13px] font-semibold', ROUTE_CLASS[route])} title={reason}>
-      <span className="size-2.5 rounded-full border-2 border-current" />
-      {ROUTE_LABEL[route]}
-    </span>
+    <div className="relative mb-2.5 flex items-center gap-2.5" title={reason}>
+      <span className="relative z-10 -ml-6 flex size-[17px] items-center justify-center rounded-full bg-bg">
+        <span
+          className={cn('size-[13px] rounded-full border-[3px]', !route && pending && 'animate-pulse')}
+          style={{ borderColor: color, background: route ? 'var(--bg)' : 'transparent' }}
+        />
+      </span>
+      <span className="text-[13px] font-semibold" style={{ color: route || waiting ? color : 'var(--text-muted)' }}>
+        {waiting ? 'Stopped for your OK' : route ? ROUTE_LABEL[route] : pending ? 'Choosing a route' : 'Answer'}
+      </span>
+      {reason && route && !pending ? <span className="hidden min-w-0 truncate text-[12.5px] text-faint sm:inline">{reason}</span> : null}
+    </div>
   );
 }
 
 function UserMessage({ message }: { message: UIMessage }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] sm:max-w-[75%]">
-        <div className="rounded-2xl rounded-br-md border border-line bg-raised px-4 py-2.5 text-[15px] leading-relaxed text-ink shadow-lift">
+      <div className="max-w-[85%] sm:max-w-[78%]">
+        <div className="rounded-[20px] rounded-br-md bg-ink px-4 py-2.5 text-[15.5px] leading-relaxed text-bg">
           <p className="whitespace-pre-wrap break-words">{message.content}</p>
         </div>
         {message.mode === 'deep_research' && (
@@ -64,9 +66,11 @@ function AssistantMessage({ message, isLast, onRegenerate, busy }: { message: UI
   const { setMemoryPanelOpen, exportPdf } = useChat();
   const live = message.status === 'streaming';
   const empty = !message.content.trim();
+  const waiting = !!message.pendingApproval?.length && !live;
   // A Deep research report (has a finished writer step) gets an Export PDF button.
   const isReport = !empty && message.steps.some((s) => s.id === 'research-write' && s.status !== 'running') && !message.id.startsWith('pending');
   const memorySaved = message.steps.find((s) => s.id === 'memory-save' && s.status === 'done');
+  const line = waiting ? 'var(--signal)' : message.route ? ROUTE_VAR[message.route] : 'var(--line)';
 
   const exportReport = async () => {
     setExporting(true);
@@ -85,10 +89,14 @@ function AssistantMessage({ message, isLast, onRegenerate, busy }: { message: UI
   };
 
   return (
-    <article className="group/msg" aria-busy={live}>
-      <div className="mb-2 flex items-center gap-3">
-        <RouteMarker route={message.route} reason={message.routeReason} pending={live} />
-      </div>
+    <article className="group/msg relative pl-6" aria-busy={live}>
+      {/* the route's line, from the station down the whole answer */}
+      <span
+        aria-hidden
+        className="absolute bottom-1 left-[8px] top-[18px] w-[2px] rounded-full transition-colors duration-500"
+        style={{ background: `linear-gradient(to bottom, ${line}, color-mix(in oklab, ${line} 25%, transparent))` }}
+      />
+      <Station route={message.route} reason={message.routeReason} pending={live} waiting={waiting} />
 
       <Timeline steps={message.steps} route={message.route} live={live} elapsedMs={message.elapsedMs} />
 
@@ -97,6 +105,10 @@ function AssistantMessage({ message, isLast, onRegenerate, busy }: { message: UI
       ) : live ? (
         <LiveActivity steps={message.steps} route={message.route} />
       ) : null}
+
+      {waiting && <ApprovalCard messageId={message.id} actions={message.pendingApproval!} />}
+
+      {message.approvals?.length && !waiting ? <ApprovalLog items={message.approvals} /> : null}
 
       {message.status === 'error' && (
         <div role="alert" className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-danger/40 bg-danger/10 px-3.5 py-2.5 text-[14px] text-ink">
@@ -125,13 +137,8 @@ function AssistantMessage({ message, isLast, onRegenerate, busy }: { message: UI
         </button>
       )}
 
-      {!live && (
-        <div
-          className={cn(
-            'mt-3 flex flex-wrap items-center gap-1 text-faint transition-opacity',
-            isReport ? 'opacity-100' : 'opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100',
-          )}
-        >
+      {!live && !waiting && (
+        <div className="mt-3 flex flex-wrap items-center gap-1 text-faint transition-opacity sm:opacity-70 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100">
           {isReport && (
             <button
               type="button"
@@ -156,7 +163,12 @@ function AssistantMessage({ message, isLast, onRegenerate, busy }: { message: UI
               Regenerate
             </button>
           )}
-          {message.elapsedMs ? <span className="ml-2 text-[12px]">{formatDuration(message.elapsedMs)}{message.model ? `, ${message.model}` : ''}</span> : null}
+          {message.elapsedMs ? (
+            <span className="ml-2 text-[12px]">
+              {formatDuration(message.elapsedMs)}
+              {message.model ? ` with ${message.model}` : ''}
+            </span>
+          ) : null}
         </div>
       )}
     </article>

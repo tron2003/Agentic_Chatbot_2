@@ -78,14 +78,30 @@ OPENCLAW = {
 # ── external agents ──────────────────────────────────────────────────────────
 
 
+def approve_all(client, events: list[dict]) -> list[dict]:
+    """Approve every action a paused answer is waiting on and return the resumed stream."""
+    paused = next(e for e in events if e["type"] == "approval_required")
+    meta = events[0]
+    body = {"conversation_id": meta["conversation_id"], "message_id": meta["message_id"],
+            "decisions": {a["id"]: "approve" for a in paused["actions"]}}
+    with client.stream("POST", "/api/chat/approve", json=body) as res:
+        assert res.status_code == 200, res.read()
+        return parse_sse(res.read().decode())
+
+
 def test_delegates_to_external_agent_with_session_and_auth(tmp_path, monkeypatch, client, stream):
     fake = FakeServices().install(monkeypatch)
     write_config(tmp_path, monkeypatch, {"agents": {"openclaw": OPENCLAW}})
 
-    events = stream({"message": "Ask openclaw to message Priya that I'm running late"})
-    assert next(e for e in events if e["type"] == "route")["route"] == "agent"
+    first = stream({"message": "Ask openclaw to message Priya that I'm running late"})
+    assert next(e for e in first if e["type"] == "route")["route"] == "agent"
+    assert not fake.to("/chat/completions"), "delegating to OpenClaw waits for approval"
+    waiting = [e["step"] for e in first if e["type"] == "step" and e["step"].get("tool") == "ask_openclaw"]
+    assert waiting[0]["title"] == "Asking OpenClaw" and waiting[-1]["status"] == "waiting"
+
+    events = approve_all(client, first)
+    assert events[0]["resumed"] is True and events[0]["message_id"] == first[0]["message_id"]
     steps = [e["step"] for e in events if e["type"] == "step" and e["step"].get("tool") == "ask_openclaw"]
-    assert steps[0]["title"] == "Asking OpenClaw"
     assert [s["status"] for s in steps] == ["running", "done"]
 
     call = fake.to("/chat/completions")[0]
@@ -97,15 +113,17 @@ def test_delegates_to_external_agent_with_session_and_auth(tmp_path, monkeypatch
     assert body["user"] == f"junction:{conversation_id}", "each conversation keeps its own OpenClaw session"
     assert "Priya" in body["messages"][0]["content"]
     assert "Sent it." in events[-1]["message"]["content"]
+    assert events[-1]["message"]["metadata"]["approvals"][0]["decision"] == "approve"
+    assert "pending_approval" not in events[-1]["message"]["metadata"]
 
     integrations = client.get("/api/integrations?refresh=true").json()["items"]
     assert {"name": "openclaw", "status": "ok"}.items() <= next(i for i in integrations if i["name"] == "openclaw").items()
 
 
-def test_unreachable_agent_is_reported_not_fatal(tmp_path, monkeypatch, stream):
+def test_unreachable_agent_is_reported_not_fatal(tmp_path, monkeypatch, client, stream):
     FakeServices(fail=True).install(monkeypatch)
     write_config(tmp_path, monkeypatch, {"agents": {"openclaw": OPENCLAW}})
-    events = stream({"message": "ask openclaw to set a reminder for 6pm"})
+    events = approve_all(client, stream({"message": "ask openclaw to set a reminder for 6pm"}))
     step = [e["step"] for e in events if e["type"] == "step" and e["step"].get("tool") == "ask_openclaw"][-1]
     assert step["status"] == "error" and "Couldn't reach OpenClaw" in step["result"]
     assert events[-1]["type"] == "done"

@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { api, ApiError, setApiKey as persistApiKey, streamChat, type ChatBody } from './api';
+import { api, ApiError, setApiKey as persistApiKey, streamApproval, streamChat } from './api';
 import type {
-  Attachment, ChatMode, Conversation, DocumentInfo, Meta, Step, StoredMessage, UIMessage, UploadResponse,
+  ApprovalRecord, Attachment, ChatMode, Conversation, DocumentInfo, Meta, Step, StoredMessage, StreamEvent, UIMessage,
+  UploadResponse,
 } from './types';
 import { charsPerSecond, readTypingSpeed, saveTypingSpeed, Typewriter, type TypingSpeed } from './typing';
 import { fromStored, uid } from './utils';
@@ -35,7 +36,12 @@ interface ChatState {
   typingSpeed: TypingSpeed;
   modelPickerOpen: boolean;
   memoryPanelOpen: boolean;
+  connectionsOpen: boolean;
+  /** An answer in the open conversation is paused, waiting for the user to approve an action. */
+  awaitingApproval: boolean;
 }
+
+export type Decision = 'approve' | 'decline';
 
 interface ChatActions {
   send: (text: string, attachments?: Attachment[], mode?: ChatMode) => Promise<void>;
@@ -59,12 +65,28 @@ interface ChatActions {
   setTypingSpeed: (speed: TypingSpeed) => void;
   setModelPickerOpen: (open: boolean) => void;
   setMemoryPanelOpen: (open: boolean) => void;
+  setConnectionsOpen: (open: boolean) => void;
+  /** Approve or decline the actions a paused answer waits on; the rest of the answer streams into it. */
+  approve: (messageId: string, decisions: Record<string, Decision>, alwaysAllow?: string[]) => Promise<void>;
   /** Download one answer of the open conversation as a PDF. */
   exportPdf: (messageId: string) => Promise<void>;
 }
 
 const Ctx = createContext<(ChatState & ChatActions) | null>(null);
 const MessagesCtx = createContext<UIMessage[] | null>(null);
+
+/** What a paused answer looks like after the user sent a new message instead of approving it. */
+function dropPending(m: UIMessage): UIMessage {
+  return {
+    ...m,
+    pendingApproval: undefined,
+    approvals: [
+      ...(m.approvals ?? []),
+      ...(m.pendingApproval ?? []).map((a): ApprovalRecord => ({ id: a.id, tool: a.tool, title: a.title, server: a.server, args: a.args, decision: 'dropped' })),
+    ],
+    steps: m.steps.map((s) => (s.status === 'waiting' ? { ...s, status: 'declined', result: 'Not approved' } : s)),
+  };
+}
 
 function readHash(): string | null {
   const m = /^#\/c\/([A-Za-z0-9_\-:.]+)$/.exec(window.location.hash);
@@ -92,6 +114,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [typingSpeed, setTypingSpeedState] = useState<TypingSpeed>(readTypingSpeed);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const typerRef = useRef<Typewriter | null>(null);
@@ -239,7 +262,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const runStream = useCallback(
-    async (body: ChatBody, assistantTempId: string) => {
+    async (start: (signal: AbortSignal) => AsyncGenerator<StreamEvent>, assistantTempId: string, firstMessage?: string) => {
       const controller = new AbortController();
       abortRef.current = controller;
       setStreaming(true);
@@ -255,7 +278,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       typerRef.current = typer;
 
       try {
-        for await (const ev of streamChat(body, controller.signal)) {
+        for await (const ev of start(controller.signal)) {
           switch (ev.type) {
             case 'meta': {
               const prevId = assistantId;
@@ -273,7 +296,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 setConversations((cs) => [
                   {
                     id: ev.conversation_id,
-                    title: body.message?.slice(0, 58) || 'New chat',
+                    title: firstMessage?.slice(0, 58) || 'New chat',
                     created_at: now,
                     updated_at: now,
                     message_count: 1,
@@ -305,6 +328,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             case 'sources':
               patch(assistantId, (m) => ({ ...m, sources: ev.items }));
               break;
+            case 'approval_required':
+              patch(assistantId, (m) => ({ ...m, pendingApproval: ev.actions }));
+              break;
             case 'title':
               setConversations((cs) => cs.map((c) => (c.id === ev.conversation_id ? { ...c, title: ev.title } : c)));
               break;
@@ -329,7 +355,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           setConversations((cs) => {
             const c = cs.find((x) => x.id === convId);
             if (!c) return cs;
-            const updated = { ...c, updated_at: new Date().toISOString(), message_count: c.message_count + 1 };
+            const updated = {
+              ...c,
+              updated_at: new Date().toISOString(),
+              message_count: c.message_count + 1,
+              last_route: stored.route ?? c.last_route,
+            };
             return [updated, ...cs.filter((x) => x.id !== convId)];
           });
         } else {
@@ -371,11 +402,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const now = new Date().toISOString();
       const assistantTempId = uid('pending');
       setMessages((ms) => [
-        ...ms,
+        // A new message on a paused answer counts as not approving it (the server records the same).
+        ...ms.map((m) => (m.pendingApproval ? dropPending(m) : m)),
         { id: uid('user'), role: 'user', content: message, createdAt: now, steps: [], sources: [], attachments, mode, status: 'done' },
         { id: assistantTempId, role: 'assistant', content: '', createdAt: now, steps: [], sources: [], status: 'streaming' },
       ]);
-      await runStream({ message, conversation_id: activeRef.current, attachments, mode }, assistantTempId);
+      const body = { message, conversation_id: activeRef.current, attachments, mode };
+      await runStream((signal) => streamChat(body, signal), assistantTempId, message);
     },
     [runStream],
   );
@@ -391,8 +424,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         { id: assistantTempId, role: 'assistant', content: '', createdAt: new Date().toISOString(), steps: [], sources: [], status: 'streaming' },
       ];
     });
-    await runStream({ conversation_id: id, regenerate: true }, assistantTempId);
+    await runStream((signal) => streamChat({ conversation_id: id, regenerate: true }, signal), assistantTempId);
   }, [runStream]);
+
+  const approve = useCallback(
+    async (messageId: string, decisions: Record<string, Decision>, alwaysAllow: string[] = []) => {
+      const conversationId = activeRef.current;
+      if (!conversationId || abortRef.current) return;
+      patch(messageId, (m) => ({
+        ...m,
+        status: 'streaming',
+        pendingApproval: undefined,
+        approvals: [
+          ...(m.approvals ?? []),
+          ...(m.pendingApproval ?? []).map(
+            (a): ApprovalRecord => ({ id: a.id, tool: a.tool, title: a.title, server: a.server, args: a.args, decision: decisions[a.id] ?? 'decline' }),
+          ),
+        ],
+      }));
+      const body = { conversation_id: conversationId, message_id: messageId, decisions, always_allow: alwaysAllow };
+      await runStream((signal) => streamApproval(body, signal), messageId);
+    },
+    [patch, runStream],
+  );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -529,19 +583,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   const hasMessages = messages.length > 0;
+  const awaitingApproval = messages.some((m) => !!m.pendingApproval?.length);
   const value = useMemo(
     () => ({
       meta, serverDown, conversations, conversationsLoaded, activeId, hasMessages, loadingConversation, streaming,
-      documents, toasts, needsApiKey, typingSpeed, modelPickerOpen, memoryPanelOpen,
+      documents, toasts, needsApiKey, typingSpeed, modelPickerOpen, memoryPanelOpen, connectionsOpen, awaitingApproval,
       send, regenerate, stop, newChat, open, rename, remove, searchConversations, refreshDocuments, upload,
       removeDocument, clearDocuments, exportConversation, toast, dismissToast, submitApiKey, refreshMeta,
-      setTypingSpeed, setModelPickerOpen, setMemoryPanelOpen, exportPdf,
+      setTypingSpeed, setModelPickerOpen, setMemoryPanelOpen, setConnectionsOpen, approve, exportPdf,
     }),
     [
       meta, serverDown, conversations, conversationsLoaded, activeId, hasMessages, loadingConversation, streaming,
-      documents, toasts, needsApiKey, typingSpeed, modelPickerOpen, memoryPanelOpen, send, regenerate, stop, newChat,
-      open, rename, remove, searchConversations, refreshDocuments, upload, removeDocument, clearDocuments,
-      exportConversation, toast, dismissToast, submitApiKey, refreshMeta, setTypingSpeed, exportPdf,
+      documents, toasts, needsApiKey, typingSpeed, modelPickerOpen, memoryPanelOpen, connectionsOpen, awaitingApproval,
+      send, regenerate, stop, newChat, open, rename, remove, searchConversations, refreshDocuments, upload,
+      removeDocument, clearDocuments, exportConversation, toast, dismissToast, submitApiKey, refreshMeta, setTypingSpeed,
+      approve, exportPdf,
     ],
   );
 

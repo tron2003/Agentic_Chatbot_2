@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rehypeCaret, splitBlocks } from './markdown-stream';
+import { normalizeMath, rehypeCaret, splitBlocks } from './markdown-stream';
 
 describe('splitBlocks', () => {
   it('splits paragraphs and headings at blank lines', () => {
@@ -75,5 +75,18 @@ describe('rehypeCaret', () => {
     const tree: Node = { type: 'root', children: [] };
     rehypeCaret()(tree);
     expect(isCaret(tree.children![0])).toBe(true);
+  });
+});
+
+describe('normalizeMath', () => {
+  it('turns \\[ \\] into a display block and \\( \\) into inline maths', () => {
+    expect(normalizeMath('So \\[ 2450 \\times 0.18 = 441 \\] and \\(x^2\\).')).toBe(
+      'So \n\n$$\n2450 \\times 0.18 = 441\n$$\n\n and $$x^2$$.',
+    );
+  });
+
+  it('leaves code and dollar prices alone', () => {
+    const text = 'Costs $5 or $10. `\\[a\\]`\n```\n\\(b\\)\n```';
+    expect(normalizeMath(text)).toBe(text);
   });
 });

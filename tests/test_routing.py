@@ -75,3 +75,14 @@ def test_agent_prompt_says_when_web_search_is_off():
     assert NO_WEB_NOTE in no_web and FILE_TOOLS_NOTE in no_web
     with_web = build_agent_prompt(["web_search", "calculator"], None)
     assert NO_WEB_NOTE not in with_web and FILE_TOOLS_NOTE not in with_web
+
+
+def test_naming_a_tool_routes_to_the_agent():
+    from agentic_chatbot.entity.router import Router
+    from agentic_chatbot.nodes.router_node import apply_tool_intent
+
+    chat = Router(route="chat", reason="General conversation.")
+    tools = ["web_search", "write_file", "calculator"]
+    assert apply_tool_intent(chat, "Use the write_file tool to create hello.txt", tools).route == "agent"
+    assert apply_tool_intent(chat, "I need to rewrite_files soon", tools).route == "chat"
+    assert apply_tool_intent(chat, "what's a calculator?", tools).route == "chat", "plain words never count"

@@ -1,5 +1,6 @@
 import { motion, useTransform, type MotionValue } from 'motion/react';
 import { useParallax } from '@/hooks/parallax';
+import { cn } from '@/lib/utils';
 
 /**
  * Three depth layers behind the whole app, moved by pointer and by message
@@ -31,7 +32,8 @@ function useLayer(depth: number, scrollMode: { kind: 'wrap'; rate: number } | { 
   return { x, y };
 }
 
-export function Backdrop() {
+/** ``quiet`` (in a chat): glows dimmed and no transit lines, so nothing runs through the answers. */
+export function Backdrop({ quiet = false }: { quiet?: boolean }) {
   const far = useLayer(0.12, { kind: 'wrap', rate: 0.12 });
   const mid = useLayer(0.4, { kind: 'ease', amp: 140 });
   const near = useLayer(1, { kind: 'ease', amp: 300 });
@@ -42,7 +44,7 @@ export function Backdrop() {
       {/* near: glows. Soft radial gradients instead of CSS blur(90px): they look the same,
           but a 90px blur over a screen-sized layer is one of the most expensive things a
           browser can paint, and it was being repainted as the layer moved. */}
-      <motion.div style={near} className="absolute -inset-[15%] will-change-transform">
+      <motion.div style={near} className={cn('absolute -inset-[15%] will-change-transform transition-opacity duration-700', quiet && 'opacity-40')}>
         <div
           className="absolute left-[8%] top-[4%] h-[46vmax] w-[46vmax] rounded-full"
           style={{ background: glow('var(--route-chat)'), opacity: 'var(--glow-opacity)' }}
@@ -76,7 +78,7 @@ export function Backdrop() {
           maskImage: 'radial-gradient(ellipse 38% 46% at 50% 52%, transparent 35%, black 80%)',
           WebkitMaskImage: 'radial-gradient(ellipse 38% 46% at 50% 52%, transparent 35%, black 80%)',
         }}
-        className="absolute -inset-[10%] h-[120%] w-[120%] will-change-transform"
+        className={cn('absolute -inset-[10%] h-[120%] w-[120%] will-change-transform transition-opacity duration-700', quiet && 'opacity-0')}
         viewBox="0 0 1440 900"
         preserveAspectRatio="xMidYMid slice"
         fill="none"

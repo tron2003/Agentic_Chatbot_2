@@ -47,6 +47,20 @@ class ChatRequest(BaseModel):
         return self
 
 
+class ApproveRequest(BaseModel):
+    """The user's answer to a paused action (the approval card)."""
+
+    conversation_id: str = Field(..., pattern=r"^[A-Za-z0-9_\-:.]{1,100}$")
+    message_id: str = Field(..., pattern=r"^[A-Za-z0-9_\-:.]{1,100}$", description="The paused assistant message")
+    decisions: dict[str, Literal["approve", "decline"]] = Field(
+        ..., description="Tool call ID to approve or decline. Calls left out are declined."
+    )
+    always_allow: list[str] = Field(
+        default_factory=list, max_length=20,
+        description="Tool keys (server/tool) to run without asking from now on",
+    )
+
+
 class Source(BaseModel):
     kind: str
     title: str
@@ -81,6 +95,7 @@ class ConversationOut(BaseModel):
     created_at: str
     updated_at: str
     message_count: int
+    last_route: str | None = None  # route of the latest answer (chat | rag | agent), for the home board
 
 
 class ConversationDetail(BaseModel):

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Brain, Check, ChevronsUpDown, Library, Monitor, Moon, Pencil, Plus, Search, Sun, Trash2, X } from 'lucide-react';
+import { Brain, Cable, Check, ChevronsUpDown, Library, Monitor, Moon, Pencil, Plus, Search, Sun, Trash2, X } from 'lucide-react';
 import type { ThemeChoice } from '@/hooks/useTheme';
 import { useChat } from '@/lib/chat-store';
 import type { Conversation, Integration } from '@/lib/types';
@@ -95,33 +95,51 @@ function Row({ c, active, onOpen }: { c: Conversation; active: boolean; onOpen: 
 }
 
 function kindLabel(kind: Integration['kind'], app: string): string {
-  return { agent: `Agent ${app} can ask`, inbound: `Lets other apps use ${app}`, webhook: 'Sends events' }[kind];
+  return { agent: `Agent ${app} can ask`, inbound: `Lets other apps use ${app}`, webhook: 'Sends events', mcp: 'MCP server' }[kind];
 }
 
 function statusTone(status: string) {
   if (status === 'ok' || status === 'idle') return 'bg-route-agent';
   if (status === 'unknown') return 'bg-line-strong';
+  if (status === 'skipped' || status === 'disabled' || status === 'connecting') return 'bg-route-docs';
   return 'bg-danger';
 }
 
 function Connections() {
-  const { meta } = useChat();
+  const { meta, setConnectionsOpen } = useChat();
   const items = meta?.integrations?.items ?? [];
   const error = meta?.integrations?.error;
-  if (!items.length && !error) return null;
+  const app = meta?.app_name ?? APP_NAME_FALLBACK;
   return (
     <section className="px-3 pb-1 pt-1" aria-label="Connections">
-      <h2 className="pb-1 text-[12.5px] font-semibold text-faint">Connections</h2>
+      <div className="flex items-center justify-between pb-1">
+        <h2 className="text-[12.5px] font-semibold text-faint">Connections</h2>
+        <button
+          type="button"
+          onClick={() => setConnectionsOpen(true)}
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] text-muted hover:bg-raised hover:text-ink"
+        >
+          <Cable className="size-3.5" /> Manage
+        </button>
+      </div>
       {error ? <p className="text-[12.5px] leading-snug text-danger">{error}</p> : null}
-      <ul className="space-y-0.5">
-        {items.map((i) => (
-          <li key={i.name} className="flex items-center gap-2 py-0.5" title={`${kindLabel(i.kind, meta?.app_name ?? APP_NAME_FALLBACK)}: ${i.detail} (${i.status})`}>
-            <span className={cn('size-2 shrink-0 rounded-full', statusTone(i.status))} aria-hidden />
-            <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{i.label}</span>
-            <span className="shrink-0 text-[12px] text-faint">{i.status === 'ok' || i.status === 'idle' ? (i.kind === 'agent' ? 'connected' : 'on') : i.status}</span>
-          </li>
-        ))}
-      </ul>
+      {items.length ? (
+        <ul className="space-y-0.5">
+          {items.slice(0, 6).map((i) => (
+            <li key={i.name} className="flex items-center gap-2 py-0.5" title={`${kindLabel(i.kind, app)}: ${i.detail} (${i.status})`}>
+              <span className={cn('size-2 shrink-0 rounded-full', statusTone(i.status))} aria-hidden />
+              <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{i.label}</span>
+              <span className="shrink-0 text-[12px] text-faint">
+                {i.status === 'ok' || i.status === 'idle' ? (i.kind === 'mcp' ? i.detail : i.kind === 'agent' ? 'connected' : 'on') : i.status}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <button type="button" onClick={() => setConnectionsOpen(true)} className="text-left text-[12.5px] leading-snug text-muted hover:text-ink">
+          Add MCP servers to give {app} more tools.
+        </button>
+      )}
     </section>
   );
 }

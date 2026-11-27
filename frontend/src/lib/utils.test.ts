@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StoredMessage } from './types';
-import { dateGroup, formatBytes, formatDuration, fromStored, hostname } from './utils';
+import { dateGroup, formatBytes, formatDuration, fromStored, hostname, nameFromMemories } from './utils';
 
 describe('fromStored', () => {
   const base: StoredMessage = {
@@ -68,5 +68,30 @@ describe('formatting', () => {
     expect(formatDuration(undefined)).toBe('');
     expect(hostname('https://www.example.com/a/b')).toBe('example.com');
     expect(hostname('not a url')).toBe('not a url');
+  });
+});
+
+describe('nameFromMemories', () => {
+  it('finds the name in first- or third-person facts', () => {
+    expect(nameFromMemories([{ content: 'Prefers short answers' }, { content: 'Name is Kanish' }])).toBe('Kanish');
+    expect(nameFromMemories([{ content: 'Kanish is an engineer who builds agentic AI systems' }])).toBe('Kanish');
+    expect(nameFromMemories([{ content: 'User prefers Python examples' }, { content: 'Python is their main language' }])).toBeNull();
+  });
+});
+
+describe('approvals in stored messages', () => {
+  it('maps a paused answer and its decisions', () => {
+    const action = { id: 'c1', tool: 'write_file', key: 'filesystem/write_file', server: 'filesystem', title: 'Write file', args: { path: 'a.txt' } };
+    const paused = fromStored({
+      id: 'm1', conversation_id: 'c', role: 'assistant', content: '', created_at: '2026-11-27T10:00:00Z',
+      metadata: { pending_approval: { actions: [action] } },
+    });
+    expect(paused.pendingApproval).toEqual([action]);
+    const done = fromStored({
+      id: 'm1', conversation_id: 'c', role: 'assistant', content: 'Done', created_at: '2026-11-27T10:00:00Z',
+      metadata: { approvals: [{ id: 'c1', tool: 'write_file', decision: 'approve' }] },
+    });
+    expect(done.pendingApproval).toBeUndefined();
+    expect(done.approvals?.[0].decision).toBe('approve');
   });
 });

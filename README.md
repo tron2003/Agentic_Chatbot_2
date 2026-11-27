@@ -20,6 +20,12 @@ Answers stream token by token. While Reittiä works, it types out what it's doin
 - **Stop, regenerate, copy, export**: regenerate forks the LangGraph checkpoint, so the model never sees the question twice. Conversations export as Markdown.
 - **Conversation history**: search, rename, delete, auto-generated titles, grouped by date.
 
+### Approvals and connections
+- **Nothing acts without your OK.** Look-ups run on their own. When the agent wants to send, create, delete, write or hand a task to OpenClaw/Hermes, it stops and the chat shows an approval card with exactly what it will send. Approve and the answer carries on in the same message; decline and the agent is told it wasn't done. Sending a new message instead also declines.
+- How it works: the agent saves its loop in graph state and the graph pauses in a small `approval` node with LangGraph `interrupt()`; `/api/chat/approve` resumes it with `Command(resume=…)`. Read vs act comes from the MCP server's `readOnlyHint`/`destructiveHint` labels, else the tool's name; anything unclear asks.
+- **Connections panel** (sidebar → Connections → Manage): add MCP servers by URL (streamable HTTP or SSE) or as a local command, test them before saving, switch them on and off, reconnect, and set every tool to **Always allow**, **Ask first** or **Off**. Saved in `config/connections.json`, applied without a restart. Secrets are masked in the browser; write them as `${VAR}`.
+- The OpenAI-compatible API and the MCP server have nobody to approve, so act tools are declined there with a note to approve them in the app. `TOOL_APPROVALS=off` runs everything without asking.
+
 ### Deep research
 - Switch on **Deep research** in the composer (one message at a time), or just ask for research, a report, a comparison or an analysis.
 - `research_plan` splits the question into up to 4 sub-questions → one `research_worker` per sub-question runs in parallel (LangGraph `Send`) → `research_review` checks for gaps and runs one follow-up round → `research_write` streams a Markdown report with a summary, themed sections, tables and links like `[3](url)`.
@@ -50,6 +56,8 @@ Answers stream token by token. While Reittiä works, it types out what it's doin
 - **Optional integrations** (off by default): delegate tasks to **OpenClaw**, Hermes or any OpenAI-compatible agent; let those apps use Reittiä as their model through an OpenAI-compatible `/v1` API; signed webhooks (OpenClaw hooks, n8n, Zapier); Reittiä as an **MCP server** for Claude Desktop, Cursor and other MCP clients. See [docs/integrations.md](docs/integrations.md).
 - **Production basics**: optional API-key auth, per-client rate limiting, request IDs in every log line and error, JSON logs, `/health` + `/ready` probes, upload size and type limits, sandboxed file tools, and graceful fallback to in-memory storage when Postgres, Ollama, MCP or a provider is missing in development.
 - **Live config reload**: saving `.env` or `config/config.yaml` takes effect on the next request, no restart needed.
+- **Home**: a departures board of your own work: a greeting with your name from memory, the local time, your recent chats with the route each one took, what Reittiä knows about you, your library and your connections. Suggestions come from your files and sheets.
+- **Answers** hang off their route's line, with maths rendered by KaTeX (`\[ … \]`, `\( … \)`, `$$ … $$`; single `$` stays text, so prices are safe).
 - **UI**: layered parallax, light/dark/system theme, keyboard shortcuts (`Ctrl K` new chat, `/` focus, `Esc` stop), responsive down to phone width, and reduced-motion support for every animation.
 
 ## How a message flows
@@ -147,7 +155,9 @@ Secrets and deployment settings go in `.env` (documented in `.env.example`). Mod
 | Short-term memory | `config.yaml > memory` | 3,000-token window, summarise after 6,000 tokens or 24 messages |
 | Long-term memory | `LONG_TERM_MEMORY`, `MEMORY_USER_ID`, `config.yaml > memory` | on, `local`, 200 memories |
 | Uploads | `MAX_UPLOAD_MB` | 25 MB per file |
-| MCP servers | `config/mcp_servers.yaml`, `ENABLE_MCP` | filesystem, GitHub (if `GITHUB_TOKEN`) |
+| MCP servers | `config/mcp_servers.yaml`, `ENABLE_MCP`, or the Connections panel (`config/connections.json`) | filesystem, GitHub (if `GITHUB_TOKEN`) |
+| Approvals | `TOOL_APPROVALS` (`ask`, `off`), `config.yaml > approvals`, per tool in the Connections panel | ask before act tools |
+| Local servers from the UI | `ALLOW_UI_STDIO` | allowed in development, off in production |
 
 ## API
 
@@ -157,6 +167,11 @@ Interactive docs at `/docs` (development) or `/api/docs` (production).
 |---|---|---|
 | POST | `/api/chat/stream` | Stream an answer (SSE). Body: `{message, conversation_id?, attachments?, mode?}` (`mode`: `auto` or `deep_research`), or `{conversation_id, regenerate: true}` |
 | POST | `/api/chat` | Same, as one JSON response |
+| POST | `/api/chat/approve` | Approve or decline a paused answer's actions and stream the rest (SSE). Body: `{conversation_id, message_id, decisions: {call_id: "approve" \| "decline"}, always_allow?: ["server/tool"]}` |
+| GET / POST | `/api/connections`, `/api/connections/test` | MCP servers with their tools and settings; try a server without saving |
+| POST / PUT / PATCH / DELETE | `/api/connections`, `/api/connections/{name}` | Add, edit, switch on/off, remove a server (servers from `mcp_servers.yaml` can only be switched) |
+| POST | `/api/connections/{name}/reconnect` | Connect again |
+| PUT | `/api/connections/tools` | `{key: "server/tool", setting: "auto" \| "ask" \| "off" \| null}` |
 | GET | `/api/conversations?q=` | List or search conversations |
 | GET / PATCH / DELETE | `/api/conversations/{id}` | Open, rename, delete |
 | GET | `/api/conversations/{id}/export` | Download as Markdown |
@@ -170,7 +185,7 @@ Interactive docs at `/docs` (development) or `/api/docs` (production).
 | GET / POST | `/v1/models`, `/v1/chat/completions` | OpenAI-compatible API (when `ENABLE_OPENAI_API=true`) |
 | POST | `/mcp` | MCP server, streamable HTTP (when `ENABLE_MCP_SERVER=true`) |
 
-`POST /chat` and `/chat/stream` with `thread_id` still work for older scripts. SSE events: `route`, `step` (updated by id, with the `items` a search found), `token`, `draft_reset`, `sources`, `answer` and `done`; details in [ARCHITECTURE.md](ARCHITECTURE.md#streaming-protocol).
+`POST /chat` and `/chat/stream` with `thread_id` still work for older scripts. SSE events: `route`, `step` (updated by id, with the `items` a search found), `token`, `draft_reset`, `sources`, `approval_required`, `answer` and `done`; details in [ARCHITECTURE.md](ARCHITECTURE.md#streaming-protocol).
 
 ## Project layout
 
@@ -179,10 +194,11 @@ backend_api.py                 ASGI entry point (uvicorn backend_api:app)
 run.py                         dev/prod launcher
 config/                        config.yaml (models, RAG, agent, research, memory), mcp_servers.yaml, integrations.yaml
 src/agentic_chatbot/
-  api/                         FastAPI app, routes (chat, history, documents, models, memory, system), auth + rate limit
+  api/                         FastAPI app, routes (chat, history, documents, models, memory, connections, system), auth + rate limit
   pipelines/chatbot_pipeline   LangGraph graph + streaming adapter
-  nodes/                       router, chat, rag, agent, research (plan/worker/review/write), memory (recall/remember), summarizer
-  services/                    chat turns, conversation store, knowledge base, long-term memory, spreadsheets, report PDF
+  nodes/                       router, chat, rag, agent + approval, research (plan/worker/review/write), memory (recall/remember), summarizer
+  services/                    chat turns, conversation store, knowledge base, long-term memory, spreadsheets, report PDF,
+                               tool policy (read vs act), connections
   integrations/                optional: external agents, OpenAI-compatible API, webhooks, MCP server
   components/                  LLM, embeddings, vector store, checkpointer + store, Ollama autostart, demo model
   tools/                       web search, calculator, date/time, library search, spreadsheet SQL, read_pdf, MCP
@@ -196,11 +212,12 @@ tests/                         pytest suite (runs on the demo model, no keys, no
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                         # 101 tests: SSE protocol, routes, routing, regenerate, RAG, memory, Deep research,
+pytest                         # 128 tests: SSE protocol, routes, routing, regenerate, RAG, memory, Deep research,
                                # spreadsheets and SQL safety, PDF export, model picker, web search, config reload,
-                               # database fallback, auth, limits, integrations (incl. a live MCP client)
+                               # database fallback, auth, limits, integrations (incl. a live MCP client),
+                               # approvals (pause, approve, decline, drop, always allow) and the connections API
 ruff check src tests
-cd frontend && npm test && npm run build   # 39 UI tests, type check, production build
+cd frontend && npm test && npm run build   # 44 UI tests, type check, production build
 ```
 
 Tests never go online, start Ollama, or touch your saved model choice. CI (`.github/workflows/ci.yml`) runs all three plus a Docker build.

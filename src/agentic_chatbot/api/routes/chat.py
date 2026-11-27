@@ -8,10 +8,11 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
-from agentic_chatbot.api.schemas import ChatRequest, ChatResponse
+from agentic_chatbot.api.schemas import ApproveRequest, ChatRequest, ChatResponse
 from agentic_chatbot.api.security import rate_limit, require_api_key
 from agentic_chatbot.core.context import get_request_id
-from agentic_chatbot.services.chat_service import ChatTurn, TurnError, prepare_turn
+from agentic_chatbot.services import connections
+from agentic_chatbot.services.chat_service import ChatTurn, TurnError, prepare_resume, prepare_turn
 from agentic_chatbot.services.store import get_store
 
 router = APIRouter(tags=["chat"], dependencies=[Depends(require_api_key)])
@@ -48,15 +49,31 @@ async def _sse(turn: ChatTurn) -> AsyncIterator[str]:
             yield f"data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
 
 
+_SSE_HEADERS = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no", "Connection": "keep-alive"}
+
+
 @router.post("/api/chat/stream", dependencies=[Depends(rate_limit)])
 async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
     """Stream a reply as Server-Sent Events (route, reasoning steps, tokens, sources, done)."""
     turn = await _prepare_turn(body, request)
-    return StreamingResponse(
-        _sse(turn),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
-    )
+    return StreamingResponse(_sse(turn), media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
+@router.post("/api/chat/approve", dependencies=[Depends(rate_limit)])
+async def chat_approve(body: ApproveRequest, request: Request) -> StreamingResponse:
+    """Approve or decline the actions a paused answer is waiting on, then stream the rest of it.
+
+    The rest streams into the same assistant message (``meta.resumed`` is true).
+    """
+    try:
+        turn = await prepare_resume(_pipeline(request), get_store(), conversation_id=body.conversation_id,
+                                    message_id=body.message_id, decisions=dict(body.decisions))
+    except TurnError as exc:
+        raise HTTPException(exc.status, exc.message)
+    for key in body.always_allow:
+        if "/" in key and len(key) <= 200:
+            connections.set_tool_setting(key, "auto")
+    return StreamingResponse(_sse(turn), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 @router.post("/api/chat", response_model=ChatResponse, dependencies=[Depends(rate_limit)])

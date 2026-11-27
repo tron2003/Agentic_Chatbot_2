@@ -68,6 +68,16 @@ def apply_sheet_intent(decision: Router, text: str, has_sheets: bool) -> Router:
     return decision
 
 
+def apply_tool_intent(decision: Router, text: str, tool_names: list[str]) -> Router:
+    """A message that names one of the agent's tools ("use write_file to …") needs the agent."""
+    if decision.route == "agent":
+        return decision
+    for name in tool_names:
+        if ("_" in name or "-" in name) and re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", text):
+            return Router(route="agent", reason=f"You asked for the {name} tool.")
+    return decision
+
+
 async def _plain_route(system: str, prompt: str, config: RunnableConfig) -> Router:
     """Second try for models whose structured output fails now and then: ask for one word."""
     response = await get_llm("router").ainvoke(
@@ -127,6 +137,7 @@ async def router_node(state: Chatbot, config: RunnableConfig) -> dict:
 
         decision = apply_research_intent(decision, question)
         decision = apply_sheet_intent(decision, question, sheets_available())
+        decision = apply_tool_intent(decision, question, tool_names)
         route = decision.route
         reason = decision.reason
         if route == "rag" and not kb_available:

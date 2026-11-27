@@ -29,7 +29,47 @@ export function fromStored(m: StoredMessage): UIMessage {
     status: meta.stopped ? 'stopped' : meta.failed ? 'error' : 'done',
     elapsedMs: meta.elapsed_ms,
     model: meta.model,
+    pendingApproval: meta.pending_approval?.actions?.length ? meta.pending_approval.actions : undefined,
+    approvals: meta.approvals?.length ? meta.approvals : undefined,
   };
+}
+
+/** The greeting for the time of day, in the reader's own clock. */
+export function greeting(now = new Date()): string {
+  const h = now.getHours();
+  if (h < 5) return 'Up late';
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/**
+ * The user's first name from long-term memory ("Name is Kanish", "Goes by Kanish",
+ * "User's name is Kanish"), or null.
+ */
+export function nameFromMemories(items: { content: string }[]): string | null {
+  for (const { content } of items) {
+    const m = /\b(?:[Nn]ame is|[Gg]oes by|[Cc]alled|[Cc]all me|I am|I'm)\s+(\p{Lu}[\p{L}'-]{1,30})/u.exec(content);
+    if (m) return m[1];
+  }
+  // Facts are often written about the user in the third person: "Kanish is an engineer who…".
+  for (const { content } of items) {
+    const m = /^(\p{Lu}[\p{L}'-]{1,30}) (?:is|prefers|builds|works|uses|likes|wants|lives|has)\b/u.exec(content.trim());
+    if (m && !NOT_NAMES.has(m[1].toLowerCase())) return m[1];
+  }
+  return null;
+}
+
+const NOT_NAMES = new Set(['user', 'the', 'they', 'he', 'she', 'it', 'this', 'that', 'my', 'their', 'his', 'her', 'python', 'langgraph']);
+
+/** "11:42" today, "Yesterday", or "Mon 24 Nov" — the time column of the home board. */
+export function boardTime(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const group = dateGroup(iso, now);
+  if (group === 'Today') return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  if (group === 'Yesterday') return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 export function formatBytes(bytes: number): string {

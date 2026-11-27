@@ -7,6 +7,7 @@ from langchain_core.tools import BaseTool
 from agentic_chatbot.integrations.registry import agent_tools as integration_agent_tools
 from agentic_chatbot.mcp.mcp_manager import mcp_manager
 from agentic_chatbot.services.spreadsheets import sheets_available
+from agentic_chatbot.services.tool_policy import visible
 from agentic_chatbot.tools.kb_tool import search_knowledge_base
 from agentic_chatbot.tools.math_tool import calculator, current_datetime
 from agentic_chatbot.tools.pdf_tool import read_pdf
@@ -18,7 +19,8 @@ def get_mcp_tools() -> list[BaseTool]:
     return mcp_manager.get_tools()
 
 
-def get_agent_tools(include_kb: bool = True) -> list[BaseTool]:
+def all_agent_tools(include_kb: bool = True) -> list[BaseTool]:
+    """Every tool the agent could use, including ones switched off in the Connections panel."""
     tools: list[BaseTool] = [calculator, current_datetime]
     if web_search_available():
         tools.insert(0, web_search)
@@ -33,3 +35,8 @@ def get_agent_tools(include_kb: bool = True) -> list[BaseTool]:
             tools.append(t)
             seen.add(t.name)
     return tools
+
+
+def get_agent_tools(include_kb: bool = True) -> list[BaseTool]:
+    """The tools the agent gets: everything not switched off."""
+    return visible(all_agent_tools(include_kb))
